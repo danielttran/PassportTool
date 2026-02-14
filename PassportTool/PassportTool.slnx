@@ -1,1 +1,10 @@
-<Solution />
+<Solution>
+  <Configurations>
+    <Platform Name="ARM64" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="PassportTool/PassportTool.vcxproj" Id="5fcb0a2d-5f13-4a81-9002-c39082d37122">
+    <Deploy />
+  </Project>
+</Solution>

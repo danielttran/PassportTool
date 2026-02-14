@@ -1,0 +1,12 @@
+namespace PassportTool
+{
+    [default_interface]
+    runtimeclass MainWindow : Microsoft.UI.Xaml.Window
+    {
+        MainWindow();
+        Int32 MyProperty;
+
+        void BtnPickImage_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
+        void OnSettingsChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args);
+    }
+}
