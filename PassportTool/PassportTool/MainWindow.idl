@@ -7,6 +7,19 @@ namespace PassportTool
         Int32 MyProperty;
 
         void BtnPickImage_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
+        void BtnApplyCrop_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
+        void BtnSaveSheet_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
+
         void OnSettingsChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args);
+        void OnSheetDimChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args);
+
+        void OnImagePointerPressed(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
+        void OnImagePointerMoved(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
+        void OnImagePointerReleased(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
+        void OnImagePointerWheelChanged(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
+        void OnCropSizeChanged(Object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e);
+
+        void OnDragOver(Object sender, Microsoft.UI.Xaml.DragEventArgs e);
+        void OnDrop(Object sender, Microsoft.UI.Xaml.DragEventArgs e);
     }
 }

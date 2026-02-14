@@ -6,7 +6,6 @@
 
 #undef GetCurrentTime
 
-// --- CORE WINRT HEADERS ---
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.ApplicationModel.activation.h>
@@ -20,18 +19,13 @@
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Microsoft.UI.Xaml.Navigation.h>
 #include <winrt/Microsoft.UI.Xaml.Shapes.h>
-
-// --- STORAGE & IMAGING ---
 #include <winrt/Windows.Storage.h>
 #include <winrt/Windows.Storage.Pickers.h> 
 #include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
-
-// --- COLOR & UI HEADERS ---
-#include <winrt/Windows.UI.h>    
-#include <winrt/Microsoft.UI.h>  
-
-// --- REQUIRED FOR WINDOW HANDLE ---
+#include <winrt/Windows.UI.h>
+#include <winrt/Microsoft.UI.h>
+#include <winrt/Windows.Globalization.NumberFormatting.h>
 #include <shobjidl.h> 
 #include <microsoft.ui.xaml.window.h>
