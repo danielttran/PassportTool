@@ -7,7 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid RequestedTheme="Light" Background="#F9F9F9" UseLayoutRounding="True">
+    <Grid RequestedTheme="Light" Background="#F9F9F9" UseLayoutRounding="True" Loaded="OnWindowLoaded">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="3*" />
             <ColumnDefinition Width="1.5*" />
@@ -22,7 +22,8 @@
 
             <StackPanel Grid.Row="0" HorizontalAlignment="Center" Spacing="10" Margin="0,0,0,20">
                 <Border Background="#F5F5F5" CornerRadius="12" Padding="15" BorderThickness="1" BorderBrush="#EEEEEE">
-                    <StackPanel Orientation="Horizontal" Spacing="20">
+                    <StackPanel Orientation="Horizontal" Spacing="20" VerticalAlignment="Center">
+
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="Unit" Style="{StaticResource CaptionTextBlockStyle}" Margin="0,0,0,5"/>
                             <StackPanel Orientation="Horizontal" Spacing="10">
@@ -31,40 +32,69 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <NumberBox x:Name="NbRows" Header="Rows" Value="2" Minimum="1" Maximum="10" ValueChanged="OnSettingsChanged"/>
-                        <NumberBox x:Name="NbCols" Header="Cols" Value="3" Minimum="1" Maximum="10" ValueChanged="OnSettingsChanged"/>
-                        <NumberBox x:Name="NbSheetW" Header="Width" Value="6" Minimum="1" Maximum="100" ValueChanged="OnSheetDimChanged"/>
-                        <NumberBox x:Name="NbSheetH" Header="Height" Value="4" Minimum="1" Maximum="100" ValueChanged="OnSheetDimChanged"/>
-                        <NumberBox x:Name="NbGap" Header="Gap" Value="0.10" Minimum="0" Maximum="10.0" SmallChange="0.01" LargeChange="0.1" ValueChanged="OnSettingsChanged"/>
+                        <AppBarSeparator/>
+
+                        <NumberBox x:Name="NbSheetW" Header="Sheet Width" Value="6" Minimum="1" Maximum="100" ValueChanged="OnSettingsChanged"/>
+                        <NumberBox x:Name="NbSheetH" Header="Sheet Height" Value="4" Minimum="1" Maximum="100" ValueChanged="OnSettingsChanged"/>
+
+                        <NumberBox x:Name="NbGap" Header="Gap" Value="0.10" Minimum="0" Maximum="5.0" SmallChange="0.01" LargeChange="0.1" ValueChanged="OnSettingsChanged"/>
+
+                        <AppBarSeparator/>
+
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Layout" Style="{StaticResource CaptionTextBlockStyle}"/>
+                            <TextBlock x:Name="TxtLayoutInfo" Text="Calculating..." Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,5,0,0"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </StackPanel>
 
             <Viewbox Grid.Row="1" Stretch="Uniform">
-                <Grid x:Name="PreviewGrid" Background="White" Width="1800" Height="1200"/>
+                <Grid x:Name="PreviewGrid" Background="White" Width="1800" Height="1200">
+                </Grid>
             </Viewbox>
 
-            <Button Grid.Row="2" x:Name="BtnSave" Content="Save for Print (300 DPI)" 
-                    HorizontalAlignment="Center" Margin="0,20,0,0" Width="220" Height="40"
-                    Style="{StaticResource AccentButtonStyle}" CornerRadius="20"
-                    Click="BtnSaveSheet_Click"/>
+            <StackPanel Grid.Row="2" Orientation="Vertical" Spacing="10" HorizontalAlignment="Center" Margin="0,20,0,0">
+                <Button x:Name="BtnSave" Content="Save Sheet (300 DPI)" 
+                        HorizontalAlignment="Center" Width="220" Height="40"
+                        Style="{StaticResource AccentButtonStyle}" CornerRadius="20"
+                        Click="BtnSaveSheet_Click"/>
+                <TextBlock x:Name="TxtCellDimensions" Text="Cell: --" 
+                           HorizontalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" 
+                           Foreground="Gray" FontSize="12"/>
+            </StackPanel>
         </Grid>
 
-        <Grid Grid.Column="1" Background="#F9F9F9" Padding="20" AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop" BorderBrush="#EEEEEE" BorderThickness="1,0,0,0">
+        <Grid Grid.Column="1" Background="#FFFFFF" Padding="20" AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop" BorderBrush="#EEEEEE" BorderThickness="1,0,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <Canvas Grid.Row="0" Height="20"/>
+            <StackPanel Grid.Row="0" Spacing="15" Margin="0,0,0,15">
+                <TextBlock Text="Image Settings" Style="{StaticResource SubtitleTextBlockStyle}"/>
 
-            <Grid Grid.Row="1" x:Name="CropParentContainer" SizeChanged="OnCropSizeChanged">
-                <Border x:Name="CropContainer" Background="White" CornerRadius="12" BorderThickness="2" BorderBrush="#EEEEEE"
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <NumberBox Grid.Column="0" x:Name="NbImageW" Header="Image Width" Value="2" Minimum="0.1" Maximum="50" ValueChanged="OnSettingsChanged"/>
+                    <NumberBox Grid.Column="1" x:Name="NbImageH" Header="Image Height" Value="2" Minimum="0.1" Maximum="50" ValueChanged="OnSettingsChanged"/>
+                </Grid>
+                <TextBlock Text="Adjust the crop below to fit the dimensions above." Style="{StaticResource CaptionTextBlockStyle}" Foreground="Gray"/>
+            </StackPanel>
+
+            <Grid Grid.Row="1" x:Name="CropParentContainer" SizeChanged="OnCropSizeChanged" Background="#FAFAFA" CornerRadius="8">
+                <Border x:Name="CropContainer" Background="White" CornerRadius="0" BorderThickness="1" BorderBrush="Red"
                         HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <ScrollViewer x:Name="CropScrollViewer" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
-                                  ZoomMode="Enabled" MinZoomFactor="0.1" MaxZoomFactor="5.0"
+
+                    <ScrollViewer x:Name="CropScrollViewer" 
+                                  HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
+                                  ZoomMode="Enabled" MinZoomFactor="0.1" MaxZoomFactor="10.0"
                                   HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+
                         <Image x:Name="SourceImageControl" Stretch="None"
                                PointerPressed="OnImagePointerPressed" PointerMoved="OnImagePointerMoved"
                                PointerReleased="OnImagePointerReleased" PointerCanceled="OnImagePointerReleased"
@@ -77,28 +107,27 @@
                 </Border>
             </Grid>
 
-            <Border Grid.Row="2" Background="#F5F5F5" CornerRadius="12" Padding="15" BorderThickness="1" BorderBrush="#EEEEEE">
+            <Border Grid.Row="2" Background="#F5F5F5" CornerRadius="12" Padding="15" BorderThickness="1" BorderBrush="#EEEEEE" Margin="0,15,0,0">
                 <StackPanel Spacing="15">
+
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <FontIcon Glyph="&#xE71E;" Grid.Column="0" Margin="0,0,10,0" Foreground="Gray"/>
-                        <Slider x:Name="ZoomSlider" Grid.Column="1" Minimum="0.1" Maximum="3.0" StepFrequency="0.1" Value="1.0" />
+                        <Slider x:Name="ZoomSlider" Grid.Column="1" Minimum="0.1" Maximum="5.0" StepFrequency="0.1" Value="1.0" />
                     </Grid>
 
                     <Grid ColumnSpacing="10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="1.5*"/>
                         </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" x:Name="BtnPickImage" Content="Open" HorizontalAlignment="Stretch" Height="40" CornerRadius="20"
-                                Style="{StaticResource AccentButtonStyle}" Click="BtnPickImage_Click"/>
-                        <Button Grid.Column="1" x:Name="BtnRotate" Content="Rotate" HorizontalAlignment="Stretch" Height="40" CornerRadius="20"
-                                Style="{StaticResource AccentButtonStyle}" Click="BtnRotate_Click"/>
-                        <Button Grid.Column="2" x:Name="BtnApplyCrop" Content="Apply" HorizontalAlignment="Stretch" Height="40" CornerRadius="20"
+                        <Button Grid.Column="0" x:Name="BtnPickImage" Content="Upload" HorizontalAlignment="Stretch" Click="BtnPickImage_Click"/>
+                        <Button Grid.Column="1" x:Name="BtnRotate" Content="Rotate 90°" HorizontalAlignment="Stretch" Click="BtnRotate_Click"/>
+                        <Button Grid.Column="2" x:Name="BtnApplyCrop" Content="Update Sheet" HorizontalAlignment="Stretch" 
                                 Style="{StaticResource AccentButtonStyle}" Click="BtnApplyCrop_Click"/>
                     </Grid>
                 </StackPanel>

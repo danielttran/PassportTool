@@ -28,4 +28,5 @@
 #include <winrt/Microsoft.UI.h>
 #include <winrt/Windows.Globalization.NumberFormatting.h>
 #include <shobjidl.h> 
+#include <robuffer.h>
 #include <microsoft.ui.xaml.window.h>

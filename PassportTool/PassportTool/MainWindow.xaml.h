@@ -12,9 +12,11 @@ namespace winrt::PassportTool::implementation
     struct MainWindow : MainWindowT<MainWindow>
     {
         MainWindow();
-        int32_t MyProperty();
-        void MyProperty(int32_t value);
 
+        // Life Cycle
+        void OnWindowLoaded(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
+
+        // UI Event Handlers
         winrt::fire_and_forget BtnPickImage_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::fire_and_forget BtnApplyCrop_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::fire_and_forget BtnSaveSheet_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
@@ -22,8 +24,8 @@ namespace winrt::PassportTool::implementation
 
         void OnUnitChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void OnSettingsChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const& sender, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const& args);
-        void OnSheetDimChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const& sender, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const& args);
 
+        // Input Handling
         void OnImagePointerPressed(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnImagePointerMoved(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnImagePointerReleased(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
@@ -34,15 +36,25 @@ namespace winrt::PassportTool::implementation
         winrt::fire_and_forget OnDrop(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::DragEventArgs const& e);
 
     private:
-        void RegeneratePreviewGrid();
+        // Internal Logic
+        winrt::Windows::Foundation::IAsyncAction RegeneratePreviewGrid();
         void UpdateSheetSize();
         void RefitCropContainer();
+        void UpdateCellDimensionsDisplay();
         double GetPixelsPerUnit();
+        void Log(winrt::hstring const& message); // Logging Helper
+
+        // High-res processing
         winrt::Windows::Foundation::IAsyncAction LoadImageFromFile(winrt::Windows::Storage::StorageFile file);
+        winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Graphics::Imaging::SoftwareBitmap> CaptureCropAsBitmap();
+        winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Graphics::Imaging::SoftwareBitmap> GenerateFullResolutionSheet();
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Graphics::Imaging::SoftwareBitmap> CaptureElementAsync(winrt::Microsoft::UI::Xaml::UIElement element);
 
-        winrt::Windows::Graphics::Imaging::SoftwareBitmap m_croppedPassportPhoto{ nullptr };
-        int32_t m_myProperty{ 0 };
+        // State
+        bool m_isLoaded{ false };
+        winrt::Windows::Graphics::Imaging::SoftwareBitmap m_originalBitmap{ nullptr };
+        winrt::Windows::Graphics::Imaging::SoftwareBitmap m_croppedStamp{ nullptr };
+
         bool m_isDragging{ false };
         bool m_zoomingFromMouse{ false };
         winrt::Windows::Foundation::Point m_lastPoint{ 0,0 };

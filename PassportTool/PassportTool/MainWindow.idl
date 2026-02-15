@@ -1,28 +1,27 @@
 namespace PassportTool
 {
-    [default_interface]
-    runtimeclass MainWindow : Microsoft.UI.Xaml.Window
-    {
-        MainWindow();
-        Int32 MyProperty;
+	[default_interface]
+	runtimeclass MainWindow : Microsoft.UI.Xaml.Window
+	{
+		MainWindow();
 
-        void BtnPickImage_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
-        void BtnApplyCrop_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
-        void BtnSaveSheet_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
-        void BtnRotate_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
+		// Event Handlers
+		void BtnPickImage_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
+		void BtnApplyCrop_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
+		void BtnSaveSheet_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
+		void BtnRotate_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
 
-        void OnUnitChanged(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
+		void OnUnitChanged(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
+		void OnSettingsChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args);
 
-        void OnSettingsChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args);
-        void OnSheetDimChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args);
+		// Pointer events for the crop tool
+		void OnImagePointerPressed(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
+		void OnImagePointerMoved(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
+		void OnImagePointerReleased(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
+		void OnImagePointerWheelChanged(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
+		void OnCropSizeChanged(Object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e);
 
-        void OnImagePointerPressed(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
-        void OnImagePointerMoved(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
-        void OnImagePointerReleased(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
-        void OnImagePointerWheelChanged(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);
-        void OnCropSizeChanged(Object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e);
-
-        void OnDragOver(Object sender, Microsoft.UI.Xaml.DragEventArgs e);
-        void OnDrop(Object sender, Microsoft.UI.Xaml.DragEventArgs e);
-    }
+		void OnDragOver(Object sender, Microsoft.UI.Xaml.DragEventArgs e);
+		void OnDrop(Object sender, Microsoft.UI.Xaml.DragEventArgs e);
+	}
 }
