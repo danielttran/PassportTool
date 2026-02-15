@@ -22,12 +22,20 @@
 
             <StackPanel Grid.Row="0" HorizontalAlignment="Center" Spacing="10" Margin="0,0,0,20">
                 <Border Background="#F5F5F5" CornerRadius="12" Padding="15" BorderThickness="1" BorderBrush="#EEEEEE">
-                    <StackPanel Orientation="Horizontal" Spacing="15">
+                    <StackPanel Orientation="Horizontal" Spacing="20">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Unit" Style="{StaticResource CaptionTextBlockStyle}" Margin="0,0,0,5"/>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <RadioButton x:Name="RadioInches" Content="in" IsChecked="True" Checked="OnUnitChanged"/>
+                                <RadioButton x:Name="RadioCm" Content="cm" Checked="OnUnitChanged"/>
+                            </StackPanel>
+                        </StackPanel>
+
                         <NumberBox x:Name="NbRows" Header="Rows" Value="2" Minimum="1" Maximum="10" ValueChanged="OnSettingsChanged"/>
                         <NumberBox x:Name="NbCols" Header="Cols" Value="3" Minimum="1" Maximum="10" ValueChanged="OnSettingsChanged"/>
-                        <NumberBox x:Name="NbSheetW" Header="Width (in)" Value="6" Minimum="2" Maximum="20" ValueChanged="OnSheetDimChanged"/>
-                        <NumberBox x:Name="NbSheetH" Header="Height (in)" Value="4" Minimum="2" Maximum="20" ValueChanged="OnSheetDimChanged"/>
-                        <NumberBox x:Name="NbGap" Header="Gap (in)" Value="0.10" Minimum="0" Maximum="2.0" SmallChange="0.01" LargeChange="0.1" ValueChanged="OnSettingsChanged"/>
+                        <NumberBox x:Name="NbSheetW" Header="Width" Value="6" Minimum="1" Maximum="100" ValueChanged="OnSheetDimChanged"/>
+                        <NumberBox x:Name="NbSheetH" Header="Height" Value="4" Minimum="1" Maximum="100" ValueChanged="OnSheetDimChanged"/>
+                        <NumberBox x:Name="NbGap" Header="Gap" Value="0.10" Minimum="0" Maximum="10.0" SmallChange="0.01" LargeChange="0.1" ValueChanged="OnSettingsChanged"/>
                     </StackPanel>
                 </Border>
             </StackPanel>
@@ -60,7 +68,11 @@
                         <Image x:Name="SourceImageControl" Stretch="None"
                                PointerPressed="OnImagePointerPressed" PointerMoved="OnImagePointerMoved"
                                PointerReleased="OnImagePointerReleased" PointerCanceled="OnImagePointerReleased"
-                               PointerWheelChanged="OnImagePointerWheelChanged"/>
+                               PointerWheelChanged="OnImagePointerWheelChanged">
+                            <Image.RenderTransform>
+                                <RotateTransform x:Name="ImageRotation" Angle="0" CenterX="0.5" CenterY="0.5"/>
+                            </Image.RenderTransform>
+                        </Image>
                     </ScrollViewer>
                 </Border>
             </Grid>
@@ -80,10 +92,13 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" x:Name="BtnPickImage" Content="Open Photo" HorizontalAlignment="Stretch" Height="40" CornerRadius="20"
+                        <Button Grid.Column="0" x:Name="BtnPickImage" Content="Open" HorizontalAlignment="Stretch" Height="40" CornerRadius="20"
                                 Style="{StaticResource AccentButtonStyle}" Click="BtnPickImage_Click"/>
-                        <Button Grid.Column="1" x:Name="BtnApplyCrop" Content="Apply Crop" HorizontalAlignment="Stretch" Height="40" CornerRadius="20"
+                        <Button Grid.Column="1" x:Name="BtnRotate" Content="Rotate" HorizontalAlignment="Stretch" Height="40" CornerRadius="20"
+                                Style="{StaticResource AccentButtonStyle}" Click="BtnRotate_Click"/>
+                        <Button Grid.Column="2" x:Name="BtnApplyCrop" Content="Apply" HorizontalAlignment="Stretch" Height="40" CornerRadius="20"
                                 Style="{StaticResource AccentButtonStyle}" Click="BtnApplyCrop_Click"/>
                     </Grid>
                 </StackPanel>

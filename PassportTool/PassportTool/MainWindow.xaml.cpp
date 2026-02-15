@@ -32,55 +32,84 @@ namespace winrt::PassportTool::implementation
         rounder.RoundingAlgorithm(RoundingAlgorithm::RoundHalfUp);
         formatter.NumberRounder(rounder);
 
-        NbGap().NumberFormatter(formatter);
+        this->NbGap().NumberFormatter(formatter);
+        this->NbSheetW().NumberFormatter(formatter);
+        this->NbSheetH().NumberFormatter(formatter);
 
-        ZoomSlider().ValueChanged([this](auto&&, auto&& args)
+        this->ZoomSlider().ValueChanged([this](auto&&, auto&& args)
             {
-                if (m_zoomingFromMouse) return;
-                if (CropScrollViewer())
+                if (this->m_zoomingFromMouse) return;
+                if (this->CropScrollViewer())
                 {
-                    CropScrollViewer().ChangeView(nullptr, nullptr, static_cast<float>(args.NewValue()));
+                    this->CropScrollViewer().ChangeView(nullptr, nullptr, static_cast<float>(args.NewValue()));
                 }
             });
 
-        RegeneratePreviewGrid();
-        RefitCropContainer();
+        this->RegeneratePreviewGrid();
+        this->RefitCropContainer();
     }
 
     int32_t MainWindow::MyProperty() { return m_myProperty; }
     void MainWindow::MyProperty(int32_t value) { m_myProperty = value; }
 
+    double MainWindow::GetPixelsPerUnit()
+    {
+        double dpi = 300.0;
+        if (this->RadioCm().IsChecked())
+        {
+            return dpi / 2.54;
+        }
+        return dpi;
+    }
+
+    void MainWindow::OnUnitChanged(IInspectable const&, RoutedEventArgs const&)
+    {
+        if (!this->NbSheetW() || !this->NbSheetH() || !this->NbGap()) return;
+
+        auto radioChecked = this->RadioCm().IsChecked();
+        bool toCm = (radioChecked != nullptr && radioChecked.Value());
+        double factor = toCm ? 2.54 : (1.0 / 2.54);
+
+        this->NbSheetW().Value(this->NbSheetW().Value() * factor);
+        this->NbSheetH().Value(this->NbSheetH().Value() * factor);
+        this->NbGap().Value(this->NbGap().Value() * factor);
+
+        this->UpdateSheetSize();
+        this->RegeneratePreviewGrid();
+        this->RefitCropContainer();
+    }
+
+    void MainWindow::BtnRotate_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        double currentAngle = this->ImageRotation().Angle();
+        this->ImageRotation().Angle(fmod(currentAngle + 90.0, 360.0));
+    }
+
     void MainWindow::OnSettingsChanged(NumberBox const&, NumberBoxValueChangedEventArgs const&)
     {
-        RegeneratePreviewGrid();
-        RefitCropContainer();
+        this->RegeneratePreviewGrid();
+        this->RefitCropContainer();
     }
 
     void MainWindow::OnSheetDimChanged(NumberBox const&, NumberBoxValueChangedEventArgs const&)
     {
-        UpdateSheetSize();
-        RefitCropContainer();
+        this->UpdateSheetSize();
+        this->RefitCropContainer();
     }
 
     void MainWindow::OnCropSizeChanged(IInspectable const&, SizeChangedEventArgs const&)
     {
-        RefitCropContainer();
+        this->RefitCropContainer();
     }
 
     void MainWindow::RefitCropContainer()
     {
-        if (!CropContainer() || !CropParentContainer()) return;
-        double availableW = CropParentContainer().ActualWidth();
-        double availableH = CropParentContainer().ActualHeight();
+        if (!this->CropContainer() || !this->CropParentContainer()) return;
+        double availableW = this->CropParentContainer().ActualWidth();
+        double availableH = this->CropParentContainer().ActualHeight();
         if (availableW < 10 || availableH < 10) return;
 
-        double sheetW = NbSheetW().Value();
-        double sheetH = NbSheetH().Value();
-        double rows = NbRows().Value();
-        double cols = NbCols().Value();
-        if (rows == 0 || cols == 0) return;
-
-        double targetRatio = (sheetW / cols) / (sheetH / rows);
+        double targetRatio = (this->NbSheetW().Value() / this->NbCols().Value()) / (this->NbSheetH().Value() / this->NbRows().Value());
         double candidateW = availableH * targetRatio;
         double candidateH = availableH;
 
@@ -90,31 +119,31 @@ namespace winrt::PassportTool::implementation
             candidateH = availableW / targetRatio;
         }
 
-        CropContainer().Width(candidateW);
-        CropContainer().Height(candidateH);
+        this->CropContainer().Width(candidateW);
+        this->CropContainer().Height(candidateH);
     }
 
     void MainWindow::OnImagePointerWheelChanged(IInspectable const&, PointerRoutedEventArgs const& e)
     {
-        int delta = e.GetCurrentPoint(CropScrollViewer()).Properties().MouseWheelDelta();
-        double oldZoom = ZoomSlider().Value();
+        int delta = e.GetCurrentPoint(this->CropScrollViewer()).Properties().MouseWheelDelta();
+        double oldZoom = this->ZoomSlider().Value();
         double newZoom = (delta > 0) ? oldZoom + 0.1 : oldZoom - 0.1;
 
-        if (newZoom < ZoomSlider().Minimum()) newZoom = ZoomSlider().Minimum();
-        if (newZoom > ZoomSlider().Maximum()) newZoom = ZoomSlider().Maximum();
+        if (newZoom < this->ZoomSlider().Minimum()) newZoom = this->ZoomSlider().Minimum();
+        if (newZoom > this->ZoomSlider().Maximum()) newZoom = this->ZoomSlider().Maximum();
         if (newZoom == oldZoom) return;
 
-        auto pt = e.GetCurrentPoint(CropScrollViewer()).Position();
-        double hOff = CropScrollViewer().HorizontalOffset();
-        double vOff = CropScrollViewer().VerticalOffset();
+        auto pt = e.GetCurrentPoint(this->CropScrollViewer()).Position();
+        double hOff = this->CropScrollViewer().HorizontalOffset();
+        double vOff = this->CropScrollViewer().VerticalOffset();
 
         double newH = ((hOff + pt.X) / oldZoom) * newZoom - pt.X;
         double newV = ((vOff + pt.Y) / oldZoom) * newZoom - pt.Y;
 
-        m_zoomingFromMouse = true;
-        ZoomSlider().Value(newZoom);
-        CropScrollViewer().ChangeView(newH, newV, static_cast<float>(newZoom));
-        m_zoomingFromMouse = false;
+        this->m_zoomingFromMouse = true;
+        this->ZoomSlider().Value(newZoom);
+        this->CropScrollViewer().ChangeView(newH, newV, static_cast<float>(newZoom));
+        this->m_zoomingFromMouse = false;
         e.Handled(true);
     }
 
@@ -122,55 +151,55 @@ namespace winrt::PassportTool::implementation
     {
         auto img = sender.as<Image>();
         img.CapturePointer(e.Pointer());
-        m_isDragging = true;
-        m_lastPoint = e.GetCurrentPoint(CropScrollViewer()).Position();
+        this->m_isDragging = true;
+        this->m_lastPoint = e.GetCurrentPoint(this->CropScrollViewer()).Position();
     }
 
     void MainWindow::OnImagePointerMoved(IInspectable const&, PointerRoutedEventArgs const& e)
     {
-        if (m_isDragging)
+        if (this->m_isDragging)
         {
-            auto pt = e.GetCurrentPoint(CropScrollViewer()).Position();
-            CropScrollViewer().ChangeView(CropScrollViewer().HorizontalOffset() - (pt.X - m_lastPoint.X),
-                CropScrollViewer().VerticalOffset() - (pt.Y - m_lastPoint.Y), nullptr);
-            m_lastPoint = pt;
+            auto pt = e.GetCurrentPoint(this->CropScrollViewer()).Position();
+            this->CropScrollViewer().ChangeView(this->CropScrollViewer().HorizontalOffset() - (pt.X - this->m_lastPoint.X),
+                this->CropScrollViewer().VerticalOffset() - (pt.Y - this->m_lastPoint.Y), nullptr);
+            this->m_lastPoint = pt;
         }
     }
 
     void MainWindow::OnImagePointerReleased(IInspectable const& sender, PointerRoutedEventArgs const& e)
     {
-        m_isDragging = false;
+        this->m_isDragging = false;
         sender.as<Image>().ReleasePointerCapture(e.Pointer());
     }
 
     void MainWindow::RegeneratePreviewGrid()
     {
-        if (!PreviewGrid()) return;
-        PreviewGrid().Children().Clear();
-        PreviewGrid().RowDefinitions().Clear();
-        PreviewGrid().ColumnDefinitions().Clear();
+        if (!this->PreviewGrid()) return;
+        this->PreviewGrid().Children().Clear();
+        this->PreviewGrid().RowDefinitions().Clear();
+        this->PreviewGrid().ColumnDefinitions().Clear();
 
-        int rows = static_cast<int>(NbRows().Value());
-        int cols = static_cast<int>(NbCols().Value());
-        double gapPx = NbGap().Value() * 300.0;
+        int rows = static_cast<int>(this->NbRows().Value());
+        int cols = static_cast<int>(this->NbCols().Value());
+        double gapPx = this->NbGap().Value() * this->GetPixelsPerUnit();
 
-        for (int i = 0; i < rows; ++i) { RowDefinition rd; rd.Height({ 1, GridUnitType::Star }); PreviewGrid().RowDefinitions().Append(rd); }
-        for (int j = 0; j < cols; ++j) { ColumnDefinition cd; cd.Width({ 1, GridUnitType::Star }); PreviewGrid().ColumnDefinitions().Append(cd); }
+        for (int i = 0; i < rows; ++i) { RowDefinition rd; rd.Height({ 1, GridUnitType::Star }); this->PreviewGrid().RowDefinitions().Append(rd); }
+        for (int j = 0; j < cols; ++j) { ColumnDefinition cd; cd.Width({ 1, GridUnitType::Star }); this->PreviewGrid().ColumnDefinitions().Append(cd); }
 
         for (int r = 0; r < rows; ++r)
         {
             for (int c = 0; c < cols; ++c)
             {
-                if (m_croppedPassportPhoto)
+                if (this->m_croppedPassportPhoto)
                 {
                     Image img; img.Stretch(Stretch::UniformToFill); img.Margin({ gapPx / 2, gapPx / 2, gapPx / 2, gapPx / 2 });
-                    SoftwareBitmapSource src; src.SetBitmapAsync(m_croppedPassportPhoto); img.Source(src);
-                    Grid::SetRow(img, r); Grid::SetColumn(img, c); PreviewGrid().Children().Append(img);
+                    SoftwareBitmapSource src; src.SetBitmapAsync(this->m_croppedPassportPhoto); img.Source(src);
+                    Grid::SetRow(img, r); Grid::SetColumn(img, c); this->PreviewGrid().Children().Append(img);
                 }
                 else
                 {
                     Border b; b.Background(SolidColorBrush(Microsoft::UI::Colors::LightGray())); b.Margin({ gapPx / 2, gapPx / 2, gapPx / 2, gapPx / 2 });
-                    Grid::SetRow(b, r); Grid::SetColumn(b, c); PreviewGrid().Children().Append(b);
+                    Grid::SetRow(b, r); Grid::SetColumn(b, c); this->PreviewGrid().Children().Append(b);
                 }
             }
         }
@@ -178,7 +207,10 @@ namespace winrt::PassportTool::implementation
 
     void MainWindow::UpdateSheetSize()
     {
-        if (PreviewGrid()) { PreviewGrid().Width(NbSheetW().Value() * 300.0); PreviewGrid().Height(NbSheetH().Value() * 300.0); }
+        if (this->PreviewGrid()) {
+            this->PreviewGrid().Width(this->NbSheetW().Value() * this->GetPixelsPerUnit());
+            this->PreviewGrid().Height(this->NbSheetH().Value() * this->GetPixelsPerUnit());
+        }
     }
 
     void MainWindow::OnDragOver(IInspectable const&, DragEventArgs const& e)
@@ -191,14 +223,19 @@ namespace winrt::PassportTool::implementation
         if (e.DataView().Contains(StandardDataFormats::StorageItems()))
         {
             auto items = co_await e.DataView().GetStorageItemsAsync();
-            if (items.Size() > 0 && items.GetAt(0).IsOfType(StorageItemTypes::File)) co_await LoadImageFromFile(items.GetAt(0).as<StorageFile>());
+            if (items.Size() > 0 && items.GetAt(0).IsOfType(StorageItemTypes::File)) {
+                co_await this->LoadImageFromFile(items.GetAt(0).as<winrt::Windows::Storage::StorageFile>());
+            }
         }
     }
 
-    winrt::Windows::Foundation::IAsyncAction MainWindow::LoadImageFromFile(StorageFile file)
+    winrt::Windows::Foundation::IAsyncAction MainWindow::LoadImageFromFile(winrt::Windows::Storage::StorageFile file)
     {
         auto stream = co_await file.OpenAsync(FileAccessMode::Read);
-        BitmapImage bmp; bmp.SetSource(stream); SourceImageControl().Source(bmp); ZoomSlider().Value(1.0);
+        BitmapImage bmp;
+        bmp.SetSource(stream);
+        this->SourceImageControl().Source(bmp);
+        this->ZoomSlider().Value(1.0);
     }
 
     winrt::fire_and_forget MainWindow::BtnPickImage_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
@@ -209,43 +246,47 @@ namespace winrt::PassportTool::implementation
         auto windowNative{ this->try_as<::IWindowNative>() };
         windowNative->get_WindowHandle(&hwnd);
         initializeWithWindow->Initialize(hwnd);
-
         picker.FileTypeFilter().ReplaceAll({ L".jpg", L".png", L".jpeg" });
         StorageFile file = co_await picker.PickSingleFileAsync();
-        if (file) co_await LoadImageFromFile(file);
+        if (file) co_await this->LoadImageFromFile(file);
     }
 
     winrt::fire_and_forget MainWindow::BtnApplyCrop_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        if (SourceImageControl().Source()) { m_croppedPassportPhoto = co_await CaptureElementAsync(CropScrollViewer()); RegeneratePreviewGrid(); }
+        if (this->SourceImageControl().Source()) {
+            this->m_croppedPassportPhoto = co_await this->CaptureElementAsync(this->CropScrollViewer());
+            this->RegeneratePreviewGrid();
+        }
     }
 
     winrt::fire_and_forget MainWindow::BtnSaveSheet_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        if (!PreviewGrid()) co_return;
-        auto bmp = co_await CaptureElementAsync(PreviewGrid());
+        if (!this->PreviewGrid()) co_return;
+        auto bmp = co_await this->CaptureElementAsync(this->PreviewGrid());
         FileSavePicker picker;
         auto initializeWithWindow{ picker.as<::IInitializeWithWindow>() };
         HWND hwnd;
         auto windowNative{ this->try_as<::IWindowNative>() };
         windowNative->get_WindowHandle(&hwnd);
         initializeWithWindow->Initialize(hwnd);
-
         picker.FileTypeChoices().Insert(L"JPEG", single_threaded_vector<hstring>({ L".jpg" }));
         StorageFile file = co_await picker.PickSaveFileAsync();
         if (file)
         {
             auto stream = co_await file.OpenAsync(FileAccessMode::ReadWrite);
             BitmapEncoder enc = co_await BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), stream);
-            enc.SetSoftwareBitmap(bmp); co_await enc.FlushAsync();
+            enc.SetSoftwareBitmap(bmp);
+            co_await enc.FlushAsync();
         }
     }
 
     winrt::Windows::Foundation::IAsyncOperation<SoftwareBitmap> MainWindow::CaptureElementAsync(UIElement el)
     {
-        RenderTargetBitmap r; co_await r.RenderAsync(el);
+        RenderTargetBitmap r;
+        co_await r.RenderAsync(el);
         SoftwareBitmap sb(BitmapPixelFormat::Bgra8, r.PixelWidth(), r.PixelHeight(), BitmapAlphaMode::Premultiplied);
-        auto pixels = co_await r.GetPixelsAsync();
-        sb.CopyFromBuffer(pixels); co_return sb;
+        auto buffer = co_await r.GetPixelsAsync();
+        sb.CopyFromBuffer(buffer);
+        co_return sb;
     }
 }

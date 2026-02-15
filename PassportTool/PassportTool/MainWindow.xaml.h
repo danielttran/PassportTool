@@ -5,6 +5,7 @@
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
 #include <winrt/Microsoft.UI.Input.h>
 #include <winrt/Windows.ApplicationModel.DataTransfer.h>
+#include <winrt/Windows.Storage.h>
 
 namespace winrt::PassportTool::implementation
 {
@@ -17,7 +18,9 @@ namespace winrt::PassportTool::implementation
         winrt::fire_and_forget BtnPickImage_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::fire_and_forget BtnApplyCrop_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::fire_and_forget BtnSaveSheet_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
+        void BtnRotate_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
 
+        void OnUnitChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void OnSettingsChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const& sender, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const& args);
         void OnSheetDimChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const& sender, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const& args);
 
@@ -34,6 +37,7 @@ namespace winrt::PassportTool::implementation
         void RegeneratePreviewGrid();
         void UpdateSheetSize();
         void RefitCropContainer();
+        double GetPixelsPerUnit();
         winrt::Windows::Foundation::IAsyncAction LoadImageFromFile(winrt::Windows::Storage::StorageFile file);
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Graphics::Imaging::SoftwareBitmap> CaptureElementAsync(winrt::Microsoft::UI::Xaml::UIElement element);
 
