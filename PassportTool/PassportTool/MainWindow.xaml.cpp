@@ -26,6 +26,12 @@ namespace winrt::PassportTool::implementation
         DecimalFormatter formatter;
         formatter.IntegerDigits(1);
         formatter.FractionDigits(2);
+
+        IncrementNumberRounder rounder;
+        rounder.Increment(0.01);
+        rounder.RoundingAlgorithm(RoundingAlgorithm::RoundHalfUp);
+        formatter.NumberRounder(rounder);
+
         NbGap().NumberFormatter(formatter);
 
         ZoomSlider().ValueChanged([this](auto&&, auto&& args)

@@ -14,7 +14,6 @@ namespace winrt::PassportTool::implementation
         int32_t MyProperty();
         void MyProperty(int32_t value);
 
-        // Async event handlers must return fire_and_forget to match 'void' in IDL
         winrt::fire_and_forget BtnPickImage_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::fire_and_forget BtnApplyCrop_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::fire_and_forget BtnSaveSheet_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
