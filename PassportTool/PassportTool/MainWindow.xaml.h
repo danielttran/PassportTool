@@ -10,14 +10,13 @@
 
 namespace winrt::PassportTool::implementation
 {
-    // Describes where a single image goes on the sheet
     struct ImagePlacement
     {
         double x;       // left edge in pixels
         double y;       // top edge in pixels
         double w;       // width in pixels (on sheet)
         double h;       // height in pixels (on sheet)
-        bool rotated;   // true = image content is rotated 90°
+        bool rotated;   // true = image content is rotated 90 degrees
     };
 
     struct MainWindow : MainWindowT<MainWindow>
@@ -36,7 +35,7 @@ namespace winrt::PassportTool::implementation
         void OnUnitChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void OnSettingsChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const& sender, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const& args);
 
-        // Input Handling
+        // Input
         void OnImagePointerPressed(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnImagePointerMoved(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnImagePointerReleased(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
@@ -59,6 +58,9 @@ namespace winrt::PassportTool::implementation
         std::vector<ImagePlacement> CalculateOptimalPlacement(
             double sheetW, double sheetH, double imgW, double imgH, double gap);
 
+        // Preview outline control
+        void SetOutlinesVisible(bool visible);
+
         // High-res processing
         winrt::Windows::Foundation::IAsyncAction LoadImageFromFile(winrt::Windows::Storage::StorageFile file);
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Graphics::Imaging::SoftwareBitmap> CaptureCropAsBitmap();
@@ -76,8 +78,8 @@ namespace winrt::PassportTool::implementation
         bool m_zoomingFromSlider{ false };
         winrt::Windows::Foundation::Point m_lastPoint{ 0,0 };
 
-        // Cached placement for save
         std::vector<ImagePlacement> m_currentPlacements;
+        std::vector<winrt::Microsoft::UI::Xaml::Controls::Border> m_outlineBorders;
     };
 }
 
