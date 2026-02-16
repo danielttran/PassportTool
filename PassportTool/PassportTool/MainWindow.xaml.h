@@ -6,9 +6,20 @@
 #include <winrt/Microsoft.UI.Input.h>
 #include <winrt/Windows.ApplicationModel.DataTransfer.h>
 #include <winrt/Windows.Storage.h>
+#include <vector>
 
 namespace winrt::PassportTool::implementation
 {
+    // Describes where a single image goes on the sheet
+    struct ImagePlacement
+    {
+        double x;       // left edge in pixels
+        double y;       // top edge in pixels
+        double w;       // width in pixels (on sheet)
+        double h;       // height in pixels (on sheet)
+        bool rotated;   // true = image content is rotated 90°
+    };
+
     struct MainWindow : MainWindowT<MainWindow>
     {
         MainWindow();
@@ -20,7 +31,7 @@ namespace winrt::PassportTool::implementation
         winrt::fire_and_forget BtnPickImage_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::fire_and_forget BtnApplyCrop_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         winrt::fire_and_forget BtnSaveSheet_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
-        void BtnRotate_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
+        winrt::fire_and_forget BtnRotate_Click(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
 
         void OnUnitChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void OnSettingsChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const& sender, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const& args);
@@ -42,22 +53,31 @@ namespace winrt::PassportTool::implementation
         void RefitCropContainer();
         void UpdateCellDimensionsDisplay();
         double GetPixelsPerUnit();
-        void Log(winrt::hstring const& message); // Logging Helper
+        void Log(winrt::hstring const& message);
+
+        // Placement algorithm
+        std::vector<ImagePlacement> CalculateOptimalPlacement(
+            double sheetW, double sheetH, double imgW, double imgH, double gap);
 
         // High-res processing
         winrt::Windows::Foundation::IAsyncAction LoadImageFromFile(winrt::Windows::Storage::StorageFile file);
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Graphics::Imaging::SoftwareBitmap> CaptureCropAsBitmap();
-        winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Graphics::Imaging::SoftwareBitmap> GenerateFullResolutionSheet();
-        winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Graphics::Imaging::SoftwareBitmap> CaptureElementAsync(winrt::Microsoft::UI::Xaml::UIElement element);
+        winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Graphics::Imaging::SoftwareBitmap> RotateBitmap90(winrt::Windows::Graphics::Imaging::SoftwareBitmap bmp);
+        void ZoomToFit();
 
         // State
         bool m_isLoaded{ false };
         winrt::Windows::Graphics::Imaging::SoftwareBitmap m_originalBitmap{ nullptr };
         winrt::Windows::Graphics::Imaging::SoftwareBitmap m_croppedStamp{ nullptr };
+        winrt::Windows::Graphics::Imaging::SoftwareBitmap m_croppedStampRotated{ nullptr };
 
         bool m_isDragging{ false };
         bool m_zoomingFromMouse{ false };
+        bool m_zoomingFromSlider{ false };
         winrt::Windows::Foundation::Point m_lastPoint{ 0,0 };
+
+        // Cached placement for save
+        std::vector<ImagePlacement> m_currentPlacements;
     };
 }
 

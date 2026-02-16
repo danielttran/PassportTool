@@ -5,6 +5,8 @@
 #endif
 #include <cmath>
 #include <algorithm>
+#include <vector>
+#include <numeric>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -21,14 +23,17 @@ using namespace winrt::Windows::Globalization::NumberFormatting;
 
 namespace winrt::PassportTool::implementation
 {
+    // ──────────────────────────────────────────────────────────────
+    // Construction & Initialisation
+    // ──────────────────────────────────────────────────────────────
+
     MainWindow::MainWindow()
     {
         InitializeComponent();
-
         m_isLoaded = false;
         Log(L"MainWindow Constructor started.");
 
-        // Configure Number Formatters
+        // Number-box formatting (2 decimal places)
         DecimalFormatter formatter;
         formatter.IntegerDigits(1);
         formatter.FractionDigits(2);
@@ -37,21 +42,34 @@ namespace winrt::PassportTool::implementation
         rounder.RoundingAlgorithm(RoundingAlgorithm::RoundHalfUp);
         formatter.NumberRounder(rounder);
 
-        if (this->NbGap()) this->NbGap().NumberFormatter(formatter);
-        if (this->NbSheetW()) this->NbSheetW().NumberFormatter(formatter);
-        if (this->NbSheetH()) this->NbSheetH().NumberFormatter(formatter);
-        if (this->NbImageW()) this->NbImageW().NumberFormatter(formatter);
-        if (this->NbImageH()) this->NbImageH().NumberFormatter(formatter);
+        if (NbGap())    NbGap().NumberFormatter(formatter);
+        if (NbSheetW()) NbSheetW().NumberFormatter(formatter);
+        if (NbSheetH()) NbSheetH().NumberFormatter(formatter);
+        if (NbImageW()) NbImageW().NumberFormatter(formatter);
+        if (NbImageH()) NbImageH().NumberFormatter(formatter);
 
-        if (this->ZoomSlider()) {
-            this->ZoomSlider().ValueChanged([this](auto&&, auto&& args)
-                {
-                    if (this->m_zoomingFromMouse) return;
-                    if (this->CropScrollViewer())
-                    {
-                        this->CropScrollViewer().ChangeView(nullptr, nullptr, static_cast<float>(args.NewValue()));
-                    }
-                });
+        // Slider → ScrollViewer zoom
+        if (ZoomSlider())
+        {
+            ZoomSlider().ValueChanged([this](auto&&, auto&& args)
+            {
+                if (m_zoomingFromMouse) return;
+                m_zoomingFromSlider = true;
+                if (CropScrollViewer())
+                    CropScrollViewer().ChangeView(nullptr, nullptr, static_cast<float>(args.NewValue()));
+                m_zoomingFromSlider = false;
+            });
+        }
+
+        // ScrollViewer → Slider sync
+        if (CropScrollViewer())
+        {
+            CropScrollViewer().ViewChanged([this](auto&&, auto&&)
+            {
+                if (m_zoomingFromSlider || m_zoomingFromMouse) return;
+                if (CropScrollViewer() && ZoomSlider())
+                    ZoomSlider().Value(CropScrollViewer().ZoomFactor());
+            });
         }
 
         Log(L"MainWindow Constructor completed.");
@@ -67,389 +85,485 @@ namespace winrt::PassportTool::implementation
     {
         Log(L"Window Loaded Event.");
         m_isLoaded = true;
-        this->UpdateSheetSize();
-        this->RefitCropContainer();
-        this->UpdateCellDimensionsDisplay();
-        this->RegeneratePreviewGrid();
+        UpdateSheetSize();
+        RefitCropContainer();
+        UpdateCellDimensionsDisplay();
+        RegeneratePreviewGrid();
     }
+
+    // ──────────────────────────────────────────────────────────────
+    // Helpers
+    // ──────────────────────────────────────────────────────────────
 
     void MainWindow::UpdateCellDimensionsDisplay()
     {
         if (!m_isLoaded) return;
-
-        auto imgWBox = this->NbImageW();
-        auto imgHBox = this->NbImageH();
-        auto txtCell = this->TxtCellDimensions();
-
+        auto imgWBox = NbImageW();
+        auto imgHBox = NbImageH();
+        auto txtCell = TxtCellDimensions();
         if (!imgWBox || !imgHBox || !txtCell) return;
 
         double imgW = imgWBox.Value();
         double imgH = imgHBox.Value();
-
-        bool isCm = false;
-        if (this->RadioCm()) {
-            auto check = this->RadioCm().IsChecked();
-            if (check) isCm = check.Value();
-        }
-
+        bool isCm = RadioCm() && RadioCm().IsChecked() && RadioCm().IsChecked().Value();
         hstring unit = isCm ? L"cm" : L"in";
-        // Use Unicode multiplication sign (U+00D7)
-        hstring cellText = L"Cell: " + to_hstring(imgW) + L" x " + to_hstring(imgH) + L" " + unit;
-        txtCell.Text(cellText);
+        txtCell.Text(L"Cell: " + to_hstring(imgW) + L" \u00D7 " + to_hstring(imgH) + L" " + unit);
     }
 
     double MainWindow::GetPixelsPerUnit()
     {
         double dpi = 300.0;
-        if (this->RadioCm())
+        if (RadioCm())
         {
-            auto isChecked = this->RadioCm().IsChecked();
-            if (isChecked && isChecked.Value()) return dpi / 2.54;
+            auto c = RadioCm().IsChecked();
+            if (c && c.Value()) return dpi / 2.54;
         }
         return dpi;
     }
+
+    // ──────────────────────────────────────────────────────────────
+    // Settings events
+    // ──────────────────────────────────────────────────────────────
 
     void MainWindow::OnUnitChanged(IInspectable const&, RoutedEventArgs const&)
     {
         if (!m_isLoaded) return;
 
-        bool toCm = false;
-        if (this->RadioCm()) {
-            auto check = this->RadioCm().IsChecked();
-            if (check) toCm = check.Value();
-        }
-
-        Log(L"Unit Changed. Converting to " + (toCm ? hstring(L"CM") : hstring(L"INCHES")));
-
+        bool toCm = RadioCm() && RadioCm().IsChecked() && RadioCm().IsChecked().Value();
         double factor = toCm ? 2.54 : (1.0 / 2.54);
-        Log(L"Conversion factor: " + to_hstring(factor));
 
         auto convert = [&](NumberBox const& box) {
-            if (box) {
-                double oldVal = box.Value();
-                box.Value(oldVal * factor);
-                Log(L"  Converted: " + to_hstring(oldVal) + L" -> " + to_hstring(box.Value()));
-            }
+            if (box) box.Value(box.Value() * factor);
         };
 
-        m_isLoaded = false;
-        Log(L"Before conversion:");
-        Log(L"  SheetW: " + to_hstring(this->NbSheetW() ? this->NbSheetW().Value() : 0));
-        Log(L"  SheetH: " + to_hstring(this->NbSheetH() ? this->NbSheetH().Value() : 0));
-        Log(L"  ImageW: " + to_hstring(this->NbImageW() ? this->NbImageW().Value() : 0));
-        Log(L"  ImageH: " + to_hstring(this->NbImageH() ? this->NbImageH().Value() : 0));
-        Log(L"  Gap: " + to_hstring(this->NbGap() ? this->NbGap().Value() : 0));
-
-        convert(this->NbSheetW());
-        convert(this->NbSheetH());
-        convert(this->NbImageW());
-        convert(this->NbImageH());
-        convert(this->NbGap());
-
-        Log(L"After conversion:");
-        Log(L"  SheetW: " + to_hstring(this->NbSheetW() ? this->NbSheetW().Value() : 0));
-        Log(L"  SheetH: " + to_hstring(this->NbSheetH() ? this->NbSheetH().Value() : 0));
-        Log(L"  ImageW: " + to_hstring(this->NbImageW() ? this->NbImageW().Value() : 0));
-        Log(L"  ImageH: " + to_hstring(this->NbImageH() ? this->NbImageH().Value() : 0));
-        Log(L"  Gap: " + to_hstring(this->NbGap() ? this->NbGap().Value() : 0));
-
+        m_isLoaded = false;           // suppress cascading events
+        convert(NbSheetW());
+        convert(NbSheetH());
+        convert(NbImageW());
+        convert(NbImageH());
+        convert(NbGap());
         m_isLoaded = true;
 
-        this->UpdateSheetSize();
-        this->RefitCropContainer();
-        this->UpdateCellDimensionsDisplay();
-        this->RegeneratePreviewGrid();
+        UpdateSheetSize();
+        RefitCropContainer();
+        UpdateCellDimensionsDisplay();
+        RegeneratePreviewGrid();
     }
 
-    void MainWindow::OnSettingsChanged(NumberBox const& sender, NumberBoxValueChangedEventArgs const&)
+    void MainWindow::OnSettingsChanged(NumberBox const& sender, NumberBoxValueChangedEventArgs const& args)
     {
         if (!m_isLoaded) return;
-
-        hstring header = L"Unknown";
-        if (sender) header = sender.Header().as<hstring>();
-        double val = sender ? sender.Value() : 0.0;
-        Log(L"Setting Changed: " + header + L" = " + to_hstring(val));
-
-        this->UpdateSheetSize();
-        this->RefitCropContainer();
-        this->UpdateCellDimensionsDisplay();
-        this->RegeneratePreviewGrid();
+        // NumberBox produces NaN when the field is cleared - ignore it
+        if (std::isnan(args.NewValue())) return;
+        UpdateSheetSize();
+        RefitCropContainer();
+        UpdateCellDimensionsDisplay();
+        RegeneratePreviewGrid();
     }
 
     void MainWindow::UpdateSheetSize()
     {
         if (!m_isLoaded) return;
-        auto grid = this->PreviewGrid();
-        auto sw = this->NbSheetW();
-        auto sh = this->NbSheetH();
-
+        auto grid = PreviewGrid();
+        auto sw = NbSheetW();
+        auto sh = NbSheetH();
         if (!grid || !sw || !sh) return;
 
-        double w = sw.Value() * this->GetPixelsPerUnit();
-        double h = sh.Value() * this->GetPixelsPerUnit();
-
+        double w = sw.Value() * GetPixelsPerUnit();
+        double h = sh.Value() * GetPixelsPerUnit();
+        if (std::isnan(w) || std::isnan(h)) return;
         if (w < 1) w = 1;
         if (h < 1) h = 1;
-
-        Log(L"Sheet Updated: " + to_hstring(w) + L"x" + to_hstring(h) + L" px");
         grid.Width(w);
         grid.Height(h);
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // Crop-container sizing (maintains aspect ratio of image cell)
+    // ──────────────────────────────────────────────────────────────
+
     void MainWindow::RefitCropContainer()
     {
-        auto container = this->CropContainer();
-        auto parent = this->CropParentContainer();
-        auto imgWBox = this->NbImageW();
-        auto imgHBox = this->NbImageH();
-
+        auto container = CropContainer();
+        auto parent = CropParentContainer();
+        auto imgWBox = NbImageW();
+        auto imgHBox = NbImageH();
         if (!container || !parent || !imgWBox || !imgHBox) return;
 
-        double availableW = parent.ActualWidth();
-        double availableH = parent.ActualHeight();
-
-        if (availableW < 10 || availableH < 10) return;
+        double availW = parent.ActualWidth();
+        double availH = parent.ActualHeight();
+        if (availW < 10 || availH < 10) return;
 
         double imgW = imgWBox.Value();
         double imgH = imgHBox.Value();
         if (imgW <= 0 || imgH <= 0) return;
 
-        double targetRatio = imgW / imgH;
+        double ratio = imgW / imgH;
+        double candidateW = availW;
+        double candidateH = availW / ratio;
+        if (candidateH > availH) { candidateH = availH; candidateW = availH * ratio; }
 
-        double candidateW = availableW;
-        double candidateH = availableW / targetRatio;
-
-        if (candidateH > availableH)
-        {
-            candidateH = availableH;
-            candidateW = availableH * targetRatio;
-        }
-
-        container.Width(candidateW - 4);
-        container.Height(candidateH - 4);
+        container.Width(std::max(1.0, candidateW - 4));
+        container.Height(std::max(1.0, candidateH - 4));
     }
 
     void MainWindow::OnCropSizeChanged(IInspectable const&, SizeChangedEventArgs const&)
     {
-        this->RefitCropContainer();
+        RefitCropContainer();
     }
+
+    // ──────────────────────────────────────────────────────────────
+    // OPTIMAL PLACEMENT ALGORITHM
+    //
+    // Tries pure-normal, pure-rotated, and horizontal / vertical
+    // band splits (both orderings) to maximise image count.
+    // For square images rotation is a no-op so the pure grid wins.
+    // ──────────────────────────────────────────────────────────────
+
+    std::vector<ImagePlacement> MainWindow::CalculateOptimalPlacement(
+        double sheetW, double sheetH, double imgW, double imgH, double gap)
+    {
+        double ppu = GetPixelsPerUnit();
+        double gapPx = gap * ppu;
+        double sheetWPx = sheetW * ppu;
+        double sheetHPx = sheetH * ppu;
+
+        // Normal cell (image as-is)
+        double cW_n = imgW * ppu;
+        double cH_n = imgH * ppu;
+
+        // Rotated cell (swap dimensions)
+        double cW_r = imgH * ppu;
+        double cH_r = imgW * ppu;
+
+        // How many items of size `s` fit in dimension `D` with gap `g`?
+        auto calcCount = [](double D, double s, double g) -> int {
+            if (D < g || s <= 0) return 0;
+            return static_cast<int>(std::floor((D - g) / (s + g)));
+        };
+
+        // Build a vector of placements for a grid block at (ox,oy) in area (aW x aH)
+        auto buildGrid = [&](double ox, double oy, double aW, double aH,
+                             double cW, double cH, double g, bool rot) -> std::vector<ImagePlacement>
+        {
+            int cols = calcCount(aW, cW, g);
+            int rows = calcCount(aH, cH, g);
+            std::vector<ImagePlacement> out;
+            out.reserve(rows * cols);
+            for (int r = 0; r < rows; ++r)
+                for (int c = 0; c < cols; ++c)
+                    out.push_back({ ox + g + c * (cW + g),
+                                    oy + g + r * (cH + g),
+                                    cW, cH, rot });
+            return out;
+        };
+
+        // Height consumed by `n` rows of cell-height `cH` with gap
+        auto bandH = [&](int n, double cH) -> double {
+            if (n <= 0) return 0;
+            return gapPx + n * (cH + gapPx);
+        };
+        auto bandW = [&](int n, double cW) -> double {
+            if (n <= 0) return 0;
+            return gapPx + n * (cW + gapPx);
+        };
+
+        int bestCount = 0;
+        std::vector<ImagePlacement> bestPlacements;
+        hstring bestDesc;
+
+        auto tryCandidate = [&](std::vector<ImagePlacement>& placements, hstring desc) {
+            int cnt = static_cast<int>(placements.size());
+            if (cnt > bestCount) {
+                bestCount = cnt;
+                bestPlacements = placements;
+                bestDesc = desc;
+            }
+        };
+
+        // ── Strategy 1: pure normal ──
+        {
+            auto p = buildGrid(0, 0, sheetWPx, sheetHPx, cW_n, cH_n, gapPx, false);
+            int cols = calcCount(sheetWPx, cW_n, gapPx);
+            int rows = calcCount(sheetHPx, cH_n, gapPx);
+            tryCandidate(p, to_hstring((int)p.size()) + L" (" + to_hstring(rows) + L"\u00D7" + to_hstring(cols) + L")");
+        }
+
+        // ── Strategy 2: pure rotated ──
+        {
+            auto p = buildGrid(0, 0, sheetWPx, sheetHPx, cW_r, cH_r, gapPx, true);
+            int cols = calcCount(sheetWPx, cW_r, gapPx);
+            int rows = calcCount(sheetHPx, cH_r, gapPx);
+            tryCandidate(p, to_hstring((int)p.size()) + L" (" + to_hstring(rows) + L"\u00D7" + to_hstring(cols) + L") Rot");
+        }
+
+        // Skip mixed strategies for square images (rotation == identity)
+        bool isSquare = std::abs(imgW - imgH) < 0.001;
+        if (!isSquare)
+        {
+            int maxNormRows = calcCount(sheetHPx, cH_n, gapPx);
+            int maxRotRows  = calcCount(sheetHPx, cH_r, gapPx);
+            int maxNormCols = calcCount(sheetWPx, cW_n, gapPx);
+            int maxRotCols  = calcCount(sheetWPx, cW_r, gapPx);
+
+            // ── Strategy 3: H-split, normal top + rotated bottom ──
+            for (int nR = 0; nR <= maxNormRows; ++nR)
+            {
+                double topH = bandH(nR, cH_n);
+                double botH = sheetHPx - topH;
+                auto pTop = buildGrid(0, 0, sheetWPx, topH, cW_n, cH_n, gapPx, false);
+                auto pBot = buildGrid(0, topH, sheetWPx, botH, cW_r, cH_r, gapPx, true);
+                pTop.insert(pTop.end(), pBot.begin(), pBot.end());
+                tryCandidate(pTop, to_hstring((int)pTop.size()) + L" (H-split N+" + to_hstring(nR) + L"r)");
+            }
+
+            // ── Strategy 4: H-split, rotated top + normal bottom ──
+            for (int nR = 0; nR <= maxRotRows; ++nR)
+            {
+                double topH = bandH(nR, cH_r);
+                double botH = sheetHPx - topH;
+                auto pTop = buildGrid(0, 0, sheetWPx, topH, cW_r, cH_r, gapPx, true);
+                auto pBot = buildGrid(0, topH, sheetWPx, botH, cW_n, cH_n, gapPx, false);
+                pTop.insert(pTop.end(), pBot.begin(), pBot.end());
+                tryCandidate(pTop, to_hstring((int)pTop.size()) + L" (H-split R+" + to_hstring(nR) + L"n)");
+            }
+
+            // ── Strategy 5: V-split, normal left + rotated right ──
+            for (int nC = 0; nC <= maxNormCols; ++nC)
+            {
+                double leftW = bandW(nC, cW_n);
+                double rightW = sheetWPx - leftW;
+                auto pL = buildGrid(0, 0, leftW, sheetHPx, cW_n, cH_n, gapPx, false);
+                auto pR = buildGrid(leftW, 0, rightW, sheetHPx, cW_r, cH_r, gapPx, true);
+                pL.insert(pL.end(), pR.begin(), pR.end());
+                tryCandidate(pL, to_hstring((int)pL.size()) + L" (V-split N+" + to_hstring(nC) + L"r)");
+            }
+
+            // ── Strategy 6: V-split, rotated left + normal right ──
+            for (int nC = 0; nC <= maxRotCols; ++nC)
+            {
+                double leftW = bandW(nC, cW_r);
+                double rightW = sheetWPx - leftW;
+                auto pL = buildGrid(0, 0, leftW, sheetHPx, cW_r, cH_r, gapPx, true);
+                auto pR = buildGrid(leftW, 0, rightW, sheetHPx, cW_n, cH_n, gapPx, false);
+                pL.insert(pL.end(), pR.begin(), pR.end());
+                tryCandidate(pL, to_hstring((int)pL.size()) + L" (V-split R+" + to_hstring(nC) + L"n)");
+            }
+
+            // ── Strategy 7: L-shaped / 4-zone packing ──
+            // Normal rows on top spanning full width, then in remaining height:
+            //   rotated block on left, plus normal block in remaining rect on right
+            for (int topRows = 0; topRows <= maxNormRows; ++topRows)
+            {
+                double topH = bandH(topRows, cH_n);
+                double botH = sheetHPx - topH;
+
+                // Bottom-left: rotated
+                int botRotCols = calcCount(sheetWPx, cW_r, gapPx);
+                for (int brc = 0; brc <= botRotCols; ++brc)
+                {
+                    double blW = bandW(brc, cW_r);
+                    double brW = sheetWPx - blW;
+
+                    auto pTop = buildGrid(0, 0, sheetWPx, topH, cW_n, cH_n, gapPx, false);
+                    auto pBL  = buildGrid(0, topH, blW, botH, cW_r, cH_r, gapPx, true);
+                    auto pBR  = buildGrid(blW, topH, brW, botH, cW_n, cH_n, gapPx, false);
+
+                    pTop.insert(pTop.end(), pBL.begin(), pBL.end());
+                    pTop.insert(pTop.end(), pBR.begin(), pBR.end());
+                    tryCandidate(pTop, to_hstring((int)pTop.size()) + L" (L-shape)");
+                }
+
+                // Bottom-left: normal, bottom-right: rotated
+                int botNormCols = calcCount(sheetWPx, cW_n, gapPx);
+                for (int bnc = 0; bnc <= botNormCols; ++bnc)
+                {
+                    double blW = bandW(bnc, cW_n);
+                    double brW = sheetWPx - blW;
+
+                    auto pTop = buildGrid(0, 0, sheetWPx, topH, cW_n, cH_n, gapPx, false);
+                    auto pBL  = buildGrid(0, topH, blW, botH, cW_n, cH_n, gapPx, false);
+                    auto pBR  = buildGrid(blW, topH, brW, botH, cW_r, cH_r, gapPx, true);
+
+                    pTop.insert(pTop.end(), pBL.begin(), pBL.end());
+                    pTop.insert(pTop.end(), pBR.begin(), pBR.end());
+                    tryCandidate(pTop, to_hstring((int)pTop.size()) + L" (L-shape2)");
+                }
+            }
+
+            // ── Strategy 8: Rotated rows on top, then 4-zone below ──
+            for (int topRows = 0; topRows <= maxRotRows; ++topRows)
+            {
+                double topH = bandH(topRows, cH_r);
+                double botH = sheetHPx - topH;
+
+                int botNormCols = calcCount(sheetWPx, cW_n, gapPx);
+                for (int bnc = 0; bnc <= botNormCols; ++bnc)
+                {
+                    double blW = bandW(bnc, cW_n);
+                    double brW = sheetWPx - blW;
+
+                    auto pTop = buildGrid(0, 0, sheetWPx, topH, cW_r, cH_r, gapPx, true);
+                    auto pBL  = buildGrid(0, topH, blW, botH, cW_n, cH_n, gapPx, false);
+                    auto pBR  = buildGrid(blW, topH, brW, botH, cW_r, cH_r, gapPx, true);
+
+                    pTop.insert(pTop.end(), pBL.begin(), pBL.end());
+                    pTop.insert(pTop.end(), pBR.begin(), pBR.end());
+                    tryCandidate(pTop, to_hstring((int)pTop.size()) + L" (L-shape3)");
+                }
+
+                int botRotCols = calcCount(sheetWPx, cW_r, gapPx);
+                for (int brc = 0; brc <= botRotCols; ++brc)
+                {
+                    double blW = bandW(brc, cW_r);
+                    double brW = sheetWPx - blW;
+
+                    auto pTop = buildGrid(0, 0, sheetWPx, topH, cW_r, cH_r, gapPx, true);
+                    auto pBL  = buildGrid(0, topH, blW, botH, cW_r, cH_r, gapPx, true);
+                    auto pBR  = buildGrid(blW, topH, brW, botH, cW_n, cH_n, gapPx, false);
+
+                    pTop.insert(pTop.end(), pBL.begin(), pBL.end());
+                    pTop.insert(pTop.end(), pBR.begin(), pBR.end());
+                    tryCandidate(pTop, to_hstring((int)pTop.size()) + L" (L-shape4)");
+                }
+            }
+        }
+
+        Log(L"Optimal placement: " + to_hstring(bestCount) + L" images – " + bestDesc);
+
+        // Update layout info text
+        if (TxtLayoutInfo())
+        {
+            if (bestCount > 0)
+                TxtLayoutInfo().Text(bestDesc);
+            else
+                TxtLayoutInfo().Text(L"Images don't fit on sheet");
+        }
+
+        return bestPlacements;
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Preview grid rendering
+    // ──────────────────────────────────────────────────────────────
 
     winrt::Windows::Foundation::IAsyncAction MainWindow::RegeneratePreviewGrid()
     {
         if (!m_isLoaded) co_return;
+        auto strong = get_strong();
         Log(L"Regenerating Preview Grid...");
 
-        auto grid = this->PreviewGrid();
-        auto swBox = this->NbSheetW();
-        auto shBox = this->NbSheetH();
-        auto imgWBox = this->NbImageW();
-        auto imgHBox = this->NbImageH();
-        auto gapBox = this->NbGap();
-        auto txtInfo = this->TxtLayoutInfo();
+        auto grid = PreviewGrid();
+        if (!grid) co_return;
 
-        if (!grid || !swBox || !shBox || !imgWBox || !imgHBox || !gapBox) {
-            Log(L"Missing controls for grid generation");
-            Log(L"  grid=" + to_hstring(grid != nullptr) + L" swBox=" + to_hstring(swBox != nullptr) 
-                + L" shBox=" + to_hstring(shBox != nullptr) + L" imgWBox=" + to_hstring(imgWBox != nullptr)
-                + L" imgHBox=" + to_hstring(imgHBox != nullptr) + L" gapBox=" + to_hstring(gapBox != nullptr));
-            co_return;
-        }
+        auto swBox   = NbSheetW();
+        auto shBox   = NbSheetH();
+        auto imgWBox = NbImageW();
+        auto imgHBox = NbImageH();
+        auto gapBox  = NbGap();
+        if (!swBox || !shBox || !imgWBox || !imgHBox || !gapBox) co_return;
 
+        // Clear previous content
         grid.Children().Clear();
         grid.RowDefinitions().Clear();
         grid.ColumnDefinitions().Clear();
-        Log(L"Grid cleared");
+        grid.RowSpacing(0);
+        grid.ColumnSpacing(0);
+        grid.Padding({ 0,0,0,0 });
 
         double sheetW = swBox.Value();
         double sheetH = shBox.Value();
-        double imgW = imgWBox.Value();
-        double imgH = imgHBox.Value();
-        double gap = gapBox.Value();
+        double imgW   = imgWBox.Value();
+        double imgH   = imgHBox.Value();
+        double gap    = gapBox.Value();
 
-        Log(L"Sheet: " + to_hstring(sheetW) + L"x" + to_hstring(sheetH) 
-            + L" | Image: " + to_hstring(imgW) + L"x" + to_hstring(imgH) 
-            + L" | Gap: " + to_hstring(gap));
-
-        if (sheetW <= 0 || sheetH <= 0 || imgW <= 0 || imgH <= 0) {
-            Log(L"Invalid dimensions");
+        // Guard against NaN from empty NumberBox
+        if (std::isnan(sheetW) || std::isnan(sheetH) || std::isnan(imgW) || std::isnan(imgH) || std::isnan(gap))
             co_return;
-        }
+        if (sheetW <= 0 || sheetH <= 0 || imgW <= 0 || imgH <= 0) co_return;
 
-        // Formula: N * (Size + Gap) <= Sheet - Gap
-        auto calc = [&](double dim, double size, double g) -> int {
-            if (dim < g) return 0;
-            return static_cast<int>(floor((dim - g) / (size + g)));
-            };
+        // Compute optimal layout
+        m_currentPlacements = CalculateOptimalPlacement(sheetW, sheetH, imgW, imgH, gap);
 
-        int colsA = calc(sheetW, imgW, gap);
-        int rowsA = calc(sheetH, imgH, gap);
-        int countA = colsA * rowsA;
+        if (m_currentPlacements.empty()) co_return;
 
-        int colsB = calc(sheetW, imgH, gap);
-        int rowsB = calc(sheetH, imgW, gap);
-        int countB = colsB * rowsB;
+        double ppu = GetPixelsPerUnit();
+        double realImgWPx = imgW * ppu;
+        double realImgHPx = imgH * ppu;
 
-        bool useRotation = (countB > countA);
-        int bestCols = useRotation ? colsB : colsA;
-        int bestRows = useRotation ? rowsB : rowsA;
-        int total = useRotation ? countB : countA;
-
-        Log(L"Layout Calc: Normal=" + to_hstring(countA) + L" Rotated=" + to_hstring(countB) + L" Chosen=" + (useRotation ? L"Rotated" : L"Normal"));
-        Log(L"Best layout: " + to_hstring(bestRows) + L" rows x " + to_hstring(bestCols) + L" cols = " + to_hstring(total) + L" images");
-
-        if (bestRows <= 0 || bestCols <= 0) {
-            Log(L"No valid layout calculated");
-            if (txtInfo) {
-                txtInfo.Text(L"Images don't fit on sheet");
-            }
-            co_return;
-        }
-
-        if (txtInfo) {
-            txtInfo.Text(to_hstring(total) + L" images (" + to_hstring(bestRows) + L" x " + to_hstring(bestCols) + L")" + (useRotation ? L" Rotated" : L""));
-        }
-
-        double ppu = this->GetPixelsPerUnit();
-        double gapPx = gap * ppu;
-
-        double realImgW_px = imgW * ppu;
-        double realImgH_px = imgH * ppu;
-
-        double cellW_px = (useRotation ? imgH : imgW) * ppu;
-        double cellH_px = (useRotation ? imgW : imgH) * ppu;
-
-        // Ensure image aspect ratio matches the settings
-        double aspectW = imgW * ppu;
-        double aspectH = imgH * ppu;
-
-        // When rendering, set image width and height to match aspect ratio
-        // This ensures the sheet shows 4 x 6 cm images, not squares
-
-        Log(L"Pixels per unit: " + to_hstring(ppu) + L" | Cell: " + to_hstring(cellW_px) + L"x" + to_hstring(cellH_px));
-        Log(L"Gap in pixels: " + to_hstring(gapPx));
-        Log(L"Stamp info: " + to_hstring(m_croppedStamp != nullptr ? L"has stamp" : L"NO STAMP"));
-
-        for (int i = 0; i < bestRows; ++i) {
-            RowDefinition rd;
-            rd.Height({ cellH_px, GridUnitType::Pixel });
-            grid.RowDefinitions().Append(rd);
-        }
-        for (int j = 0; j < bestCols; ++j) {
-            ColumnDefinition cd;
-            cd.Width({ cellW_px, GridUnitType::Pixel });
-            grid.ColumnDefinitions().Append(cd);
-        }
-
-        grid.RowSpacing(gapPx);
-        grid.ColumnSpacing(gapPx);
-        grid.Padding({ gapPx, gapPx, gapPx, gapPx });
-
-        grid.HorizontalAlignment(HorizontalAlignment::Left);
-        grid.VerticalAlignment(VerticalAlignment::Top);
-
-        Log(L"Created grid structure: " + to_hstring(bestRows) + L" rows, " + to_hstring(bestCols) + L" cols");
-
-        int cellCount = 0;
-        for (int r = 0; r < bestRows; ++r)
+        for (auto& p : m_currentPlacements)
         {
-            for (int c = 0; c < bestCols; ++c)
+            if (m_croppedStamp)
             {
-                Log(L"Creating cell [" + to_hstring(r) + L"," + to_hstring(c) + L"]");
+                // Choose the right bitmap (normal or pre-rotated)
+                auto& bmp = p.rotated ? m_croppedStampRotated : m_croppedStamp;
+                if (!bmp) continue; // safety
 
-                if (this->m_croppedStamp)
-                {
-                    Log(L"  Stamp exists, creating image");
-
-                    Image img;
-                    SoftwareBitmapSource src;
-
-                    Log(L"  Created Image and SoftwareBitmapSource objects");
-
-                    try 
-                    {
-                        Log(L"  Calling SetBitmapAsync...");
-                        co_await src.SetBitmapAsync(this->m_croppedStamp);
-                        Log(L"  SetBitmapAsync completed");
-                    }
-                    catch (hresult_error const& ex)
-                    {
-                        Log(L"  SetBitmapAsync failed: " + ex.message());
-                        co_return;
-                    }
-
-                    img.Source(src);
-                    Log(L"  Image source set");
-
-                    // Always set width and height to match user aspect ratio
-                    if (useRotation)
-                    {
-                        img.Width(realImgH_px); // swap for rotation
-                        img.Height(realImgW_px);
-                        img.Stretch(Stretch::Uniform);
-                        img.RenderTransformOrigin({ 0.5, 0.5 });
-                        RotateTransform rot;
-                        rot.Angle(90);
-                        img.RenderTransform(rot);
-                        Log(L"  Applied 90° rotation, Stretch=Uniform");
-                    }
-                    else
-                    {
-                        img.Width(realImgW_px);
-                        img.Height(realImgH_px);
-                        img.Stretch(Stretch::Uniform);
-                        Log(L"  No rotation, Stretch=Uniform");
-                    }
-
-                    Grid::SetRow(img, r);
-                    Grid::SetColumn(img, c);
-                    grid.Children().Append(img);
-                    cellCount++;
-                    Log(L"  Image added to grid");
+                Image img;
+                SoftwareBitmapSource src;
+                try {
+                    co_await src.SetBitmapAsync(bmp);
                 }
-                else
-                {
-                    Log(L"  No stamp, creating placeholder border");
-
-                    Border b;
-                    b.Background(SolidColorBrush(Microsoft::UI::Colors::LightGray()));
-                    b.BorderBrush(SolidColorBrush(Microsoft::UI::Colors::Gray()));
-                    b.BorderThickness({ 1,1,1,1 });
-
-                    if (useRotation) {
-                        TextBlock tb; tb.Text(L"90°");
-                        tb.HorizontalAlignment(HorizontalAlignment::Center); tb.VerticalAlignment(VerticalAlignment::Center);
-                        b.Child(tb);
-                    }
-
-                    Grid::SetRow(b, r);
-                    Grid::SetColumn(b, c);
-                    grid.Children().Append(b);
-                    cellCount++;
-                    Log(L"  Placeholder added to grid");
+                catch (hresult_error const& ex) {
+                    Log(L"SetBitmapAsync failed: " + ex.message());
+                    continue;
                 }
+
+                img.Source(src);
+                img.Width(p.w);
+                img.Height(p.h);
+                img.Stretch(Stretch::Uniform);
+                img.HorizontalAlignment(HorizontalAlignment::Left);
+                img.VerticalAlignment(VerticalAlignment::Top);
+                img.Margin({ p.x, p.y, 0, 0 });
+                grid.Children().Append(img);
+            }
+            else
+            {
+                // Placeholder
+                Border b;
+                b.Background(SolidColorBrush(Microsoft::UI::Colors::LightGray()));
+                b.BorderBrush(SolidColorBrush(Microsoft::UI::Colors::Gray()));
+                b.BorderThickness({ 1,1,1,1 });
+                b.Width(p.w);
+                b.Height(p.h);
+                b.HorizontalAlignment(HorizontalAlignment::Left);
+                b.VerticalAlignment(VerticalAlignment::Top);
+                b.Margin({ p.x, p.y, 0, 0 });
+
+                if (p.rotated)
+                {
+                    TextBlock tb;
+                    tb.Text(L"90\u00B0");
+                    tb.HorizontalAlignment(HorizontalAlignment::Center);
+                    tb.VerticalAlignment(VerticalAlignment::Center);
+                    b.Child(tb);
+                }
+
+                grid.Children().Append(b);
             }
         }
 
-        Log(L"Grid population complete. Total cells added: " + to_hstring(cellCount));
-        Log(L"Grid children count: " + to_hstring(grid.Children().Size()));
-        Log(L"Grid row count: " + to_hstring(grid.RowDefinitions().Size()));
-        Log(L"Grid column count: " + to_hstring(grid.ColumnDefinitions().Size()));
+        Log(L"Grid populated with " + to_hstring(static_cast<int>(m_currentPlacements.size())) + L" images.");
     }
 
-    winrt::fire_and_forget MainWindow::BtnApplyCrop_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    // ──────────────────────────────────────────────────────────────
+    // Crop / Apply / Rotate bitmap helpers
+    // ──────────────────────────────────────────────────────────────
+
+    winrt::fire_and_forget MainWindow::BtnApplyCrop_Click(IInspectable const&, RoutedEventArgs const&)
     {
         Log(L"BtnApplyCrop Clicked.");
-        if (this->m_originalBitmap) {
-            auto stamp = co_await this->CaptureCropAsBitmap();
-            if (stamp) {
-                this->m_croppedStamp = stamp;
-                Log(L"Stamp captured successfully.");
-                co_await this->RegeneratePreviewGrid();
-            }
-            else {
-                Log(L"Failed to capture stamp.");
-            }
-        }
+        if (!m_originalBitmap) co_return;
+
+        auto stamp = co_await CaptureCropAsBitmap();
+        if (!stamp) { Log(L"Failed to capture stamp."); co_return; }
+
+        m_croppedStamp = stamp;
+        m_croppedStampRotated = co_await RotateBitmap90(stamp);
+
+        Log(L"Stamp captured (" + to_hstring(stamp.PixelWidth()) + L"x" + to_hstring(stamp.PixelHeight()) + L")");
+        co_await RegeneratePreviewGrid();
     }
 
     winrt::Windows::Foundation::IAsyncOperation<SoftwareBitmap> MainWindow::CaptureCropAsBitmap()
@@ -459,296 +573,393 @@ namespace winrt::PassportTool::implementation
         double sourceW = static_cast<double>(m_originalBitmap.PixelWidth());
         double sourceH = static_cast<double>(m_originalBitmap.PixelHeight());
 
-        auto scroller = this->CropScrollViewer();
+        auto scroller = CropScrollViewer();
         if (!scroller) co_return nullptr;
 
         float zoom = scroller.ZoomFactor();
-        double hOffset = scroller.HorizontalOffset();
-        double vOffset = scroller.VerticalOffset();
-        double viewportW = scroller.ViewportWidth();
-        double viewportH = scroller.ViewportHeight();
+        double hOffset  = scroller.HorizontalOffset();
+        double vOffset  = scroller.VerticalOffset();
+        double viewW    = scroller.ViewportWidth();
+        double viewH    = scroller.ViewportHeight();
 
         double cropX = hOffset / zoom;
         double cropY = vOffset / zoom;
-        double cropW = viewportW / zoom;
-        double cropH = viewportH / zoom;
+        double cropW = viewW  / zoom;
+        double cropH = viewH  / zoom;
 
-        Log(L"Crop Calc: Offset(" + to_hstring(hOffset) + L"," + to_hstring(vOffset) + L") Zoom=" + to_hstring(zoom));
-        Log(L"Crop Rect Raw: " + to_hstring(cropX) + L"," + to_hstring(cropY) + L" " + to_hstring(cropW) + L"x" + to_hstring(cropH));
-
-        if (cropX < 0) cropX = 0;
-        if (cropY < 0) cropY = 0;
+        // Clamp to source bounds
+        cropX = std::max(0.0, cropX);
+        cropY = std::max(0.0, cropY);
         if (cropX + cropW > sourceW) cropW = sourceW - cropX;
         if (cropY + cropH > sourceH) cropH = sourceH - cropY;
+        if (cropW <= 0 || cropH <= 0) co_return nullptr;
 
-        if (cropW <= 0 || cropH <= 0) {
-            Log(L"Invalid Crop dimensions.");
-            co_return nullptr;
-        }
+        BitmapBounds bounds;
+        bounds.X = static_cast<uint32_t>(cropX);
+        bounds.Y = static_cast<uint32_t>(cropY);
+        bounds.Width  = static_cast<uint32_t>(std::max(1.0, cropW));
+        bounds.Height = static_cast<uint32_t>(std::max(1.0, cropH));
 
-        BitmapBounds extractBounds;
-        extractBounds.X = static_cast<uint32_t>(cropX);
-        extractBounds.Y = static_cast<uint32_t>(cropY);
-        extractBounds.Width = static_cast<uint32_t>(cropW);
-        extractBounds.Height = static_cast<uint32_t>(cropH);
-
-        Log(L"Extracting region: X=" + to_hstring(extractBounds.X) + L" Y=" + to_hstring(extractBounds.Y) 
-            + L" W=" + to_hstring(extractBounds.Width) + L" H=" + to_hstring(extractBounds.Height));
+        Log(L"Crop: " + to_hstring(bounds.X) + L"," + to_hstring(bounds.Y) + L" "
+            + to_hstring(bounds.Width) + L"x" + to_hstring(bounds.Height));
 
         try
         {
-            InMemoryRandomAccessStream tempStream;
-            auto encoder = co_await BitmapEncoder::CreateAsync(BitmapEncoder::PngEncoderId(), tempStream);
-            encoder.SetSoftwareBitmap(m_originalBitmap);
-            encoder.BitmapTransform().Bounds(extractBounds);
-            co_await encoder.FlushAsync();
+            InMemoryRandomAccessStream tmpStream;
+            auto enc = co_await BitmapEncoder::CreateAsync(BitmapEncoder::PngEncoderId(), tmpStream);
+            enc.SetSoftwareBitmap(m_originalBitmap);
+            enc.BitmapTransform().Bounds(bounds);
+            co_await enc.FlushAsync();
 
-            tempStream.Seek(0);
-            auto decoder = co_await BitmapDecoder::CreateAsync(tempStream);
-            auto croppedBitmap = co_await decoder.GetSoftwareBitmapAsync();
+            tmpStream.Seek(0);
+            auto dec = co_await BitmapDecoder::CreateAsync(tmpStream);
+            auto croppedBmp = co_await dec.GetSoftwareBitmapAsync();
 
-            if (croppedBitmap.BitmapPixelFormat() != BitmapPixelFormat::Bgra8 || 
-                croppedBitmap.BitmapAlphaMode() != BitmapAlphaMode::Premultiplied)
+            if (croppedBmp.BitmapPixelFormat() != BitmapPixelFormat::Bgra8 ||
+                croppedBmp.BitmapAlphaMode()   != BitmapAlphaMode::Premultiplied)
+                croppedBmp = SoftwareBitmap::Convert(croppedBmp, BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied);
+
+            co_return croppedBmp;
+        }
+        catch (hresult_error const& ex) {
+            Log(L"Crop failed: " + ex.message());
+            co_return nullptr;
+        }
+    }
+
+    winrt::Windows::Foundation::IAsyncOperation<SoftwareBitmap> MainWindow::RotateBitmap90(SoftwareBitmap bmp)
+    {
+        if (!bmp) co_return nullptr;
+        try
+        {
+            InMemoryRandomAccessStream stream;
+            auto enc = co_await BitmapEncoder::CreateAsync(BitmapEncoder::PngEncoderId(), stream);
+            enc.SetSoftwareBitmap(bmp);
+            enc.BitmapTransform().Rotation(BitmapRotation::Clockwise90Degrees);
+            co_await enc.FlushAsync();
+
+            stream.Seek(0);
+            auto dec = co_await BitmapDecoder::CreateAsync(stream);
+            auto rotated = co_await dec.GetSoftwareBitmapAsync();
+
+            if (rotated.BitmapPixelFormat() != BitmapPixelFormat::Bgra8 ||
+                rotated.BitmapAlphaMode()   != BitmapAlphaMode::Premultiplied)
+                rotated = SoftwareBitmap::Convert(rotated, BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied);
+
+            co_return rotated;
+        }
+        catch (hresult_error const& ex) {
+            Log(L"RotateBitmap90 failed: " + ex.message());
+            co_return nullptr;
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Rotate source image 90° (replaces bitmap in-place)
+    // ──────────────────────────────────────────────────────────────
+
+    winrt::fire_and_forget MainWindow::BtnRotate_Click(IInspectable const&, RoutedEventArgs const&)
+    {
+        Log(L"Rotate Source Clicked.");
+        if (!m_originalBitmap) co_return;
+
+        auto strong = get_strong();          // prevent premature destruction
+
+        try
+        {
+            auto rotated = co_await RotateBitmap90(m_originalBitmap);
+            if (!rotated) { Log(L"Rotation failed."); co_return; }
+
+            m_originalBitmap = rotated;
+
+            SoftwareBitmapSource src;
+            co_await src.SetBitmapAsync(m_originalBitmap);
+            if (SourceImageControl()) SourceImageControl().Source(src);
+
+            // Reset zoom to fit the new orientation
+            ZoomToFit();
+
+            // Invalidate stamps
+            m_croppedStamp = nullptr;
+            m_croppedStampRotated = nullptr;
+            co_await RegeneratePreviewGrid();
+            Log(L"Rotation complete.");
+        }
+        catch (hresult_error const& ex) {
+            Log(L"Rotation exception: " + ex.message());
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Zoom-to-fit: fits the loaded image inside the crop viewport
+    // ──────────────────────────────────────────────────────────────
+
+    void MainWindow::ZoomToFit()
+    {
+        try
+        {
+            auto scroller = CropScrollViewer();
+            auto imgCtrl  = SourceImageControl();
+            if (!scroller || !imgCtrl || !m_originalBitmap) return;
+
+            double imageW = static_cast<double>(m_originalBitmap.PixelWidth());
+            double imageH = static_cast<double>(m_originalBitmap.PixelHeight());
+            if (imageW <= 0 || imageH <= 0) return;
+
+            double viewportW = scroller.ViewportWidth();
+            double viewportH = scroller.ViewportHeight();
+
+            // If viewport isn't laid out yet, use container size
+            if (viewportW <= 0 || viewportH <= 0)
             {
-                croppedBitmap = SoftwareBitmap::Convert(croppedBitmap, BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied);
+                auto container = CropContainer();
+                if (container) {
+                    viewportW = container.ActualWidth();
+                    viewportH = container.ActualHeight();
+                }
+                if (viewportW <= 0 || viewportH <= 0) return;
             }
 
-            Log(L"Crop succeeded: " + to_hstring(croppedBitmap.PixelWidth()) + L"x" + to_hstring(croppedBitmap.PixelHeight()));
-            co_return croppedBitmap;
+            float fitZoom = static_cast<float>(std::min(viewportW / imageW, viewportH / imageH));
+            fitZoom = std::max(fitZoom, 0.1f);
+            fitZoom = std::min(fitZoom, 10.0f);
+
+            Log(L"ZoomToFit: img=" + to_hstring(imageW) + L"x" + to_hstring(imageH)
+                + L" viewport=" + to_hstring(viewportW) + L"x" + to_hstring(viewportH)
+                + L" zoom=" + to_hstring(fitZoom));
+
+            m_zoomingFromMouse = true;
+            scroller.ChangeView(0.0, 0.0, fitZoom);
+            if (ZoomSlider()) ZoomSlider().Value(fitZoom);
+            m_zoomingFromMouse = false;
         }
-        catch (hresult_error const& ex)
-        {
-            Log(L"Crop Failed: " + ex.message());
-            co_return nullptr;
+        catch (hresult_error const& ex) {
+            m_zoomingFromMouse = false;
+            Log(L"ZoomToFit failed: " + ex.message());
         }
     }
 
-    winrt::Windows::Foundation::IAsyncOperation<SoftwareBitmap> MainWindow::GenerateFullResolutionSheet()
-    {
-        // This function is deprecated - use RenderTargetBitmap on PreviewGrid instead
-        // Kept for reference/future use
-        if (!m_croppedStamp) {
-            Log(L"GenerateFullResolutionSheet: No stamped image available.");
-            co_return nullptr;
-        }
+    // ──────────────────────────────────────────────────────────────
+    // Save sheet at full 300 DPI resolution
+    // ──────────────────────────────────────────────────────────────
 
-        Log(L"GenerateFullResolutionSheet: This function is deprecated. Rendering is now done directly from PreviewGrid.");
-        co_return nullptr;
-    }
-
-    winrt::fire_and_forget MainWindow::BtnSaveSheet_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
+    winrt::fire_and_forget MainWindow::BtnSaveSheet_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        if (!this->PreviewGrid()) co_return;
+        auto grid = PreviewGrid();
+        if (!grid) co_return;
         Log(L"Save Button Clicked.");
 
+        auto strong = get_strong();
+
         FileSavePicker picker;
-        auto initializeWithWindow{ picker.as<::IInitializeWithWindow>() };
+        auto initWnd{ picker.as<::IInitializeWithWindow>() };
         HWND hwnd;
         auto windowNative{ this->try_as<::IWindowNative>() };
         windowNative->get_WindowHandle(&hwnd);
-        initializeWithWindow->Initialize(hwnd);
+        initWnd->Initialize(hwnd);
         picker.FileTypeChoices().Insert(L"JPEG", single_threaded_vector<hstring>({ L".jpg" }));
         picker.SuggestedFileName(L"PassportSheet");
 
         StorageFile file = co_await picker.PickSaveFileAsync();
-        if (file)
+        if (!file) co_return;
+
+        Log(L"Saving to: " + file.Path());
+
+        try
         {
-            Log(L"File Picked: " + file.Path());
+            // RenderTargetBitmap has a max size limit (~16384 on most GPUs).
+            // The PreviewGrid is already sized in 300-DPI pixels, so render
+            // it at its actual layout size which the Viewbox has scaled down.
+            // We request the grid's logical pixel dimensions.
+            int targetW = static_cast<int>(grid.Width());
+            int targetH = static_cast<int>(grid.Height());
 
-            // Render the PreviewGrid directly to get the layout with all images
-            try
+            // Cap to safe maximum for RenderTargetBitmap
+            const int kMaxRenderDim = 16384;
+            if (targetW > kMaxRenderDim || targetH > kMaxRenderDim)
             {
-                auto previewGrid = this->PreviewGrid();
-                if (!previewGrid)
-                {
-                    Log(L"PreviewGrid not found.");
-                    co_return;
-                }
-
-                Log(L"Rendering PreviewGrid to bitmap...");
-                RenderTargetBitmap rtb;
-                co_await rtb.RenderAsync(previewGrid);
-
-                Log(L"Creating SoftwareBitmap from rendered bitmap...");
-                SoftwareBitmap sb(BitmapPixelFormat::Bgra8, rtb.PixelWidth(), rtb.PixelHeight(), BitmapAlphaMode::Premultiplied);
-                auto buffer = co_await rtb.GetPixelsAsync();
-                sb.CopyFromBuffer(buffer);
-
-                Log(L"Rendered bitmap: " + to_hstring(sb.PixelWidth()) + L"x" + to_hstring(sb.PixelHeight()));
-
-                auto stream = co_await file.OpenAsync(FileAccessMode::ReadWrite);
-                BitmapEncoder enc = co_await BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), stream);
-                enc.SetSoftwareBitmap(sb);
-                co_await enc.FlushAsync();
-                Log(L"Save Complete.");
+                double scale = std::min(
+                    static_cast<double>(kMaxRenderDim) / targetW,
+                    static_cast<double>(kMaxRenderDim) / targetH);
+                targetW = static_cast<int>(targetW * scale);
+                targetH = static_cast<int>(targetH * scale);
+                Log(L"Capped render size to " + to_hstring(targetW) + L"x" + to_hstring(targetH));
             }
-            catch (hresult_error const& ex)
-            {
-                Log(L"Save failed: " + ex.message());
-            }
+
+            RenderTargetBitmap rtb;
+            co_await rtb.RenderAsync(grid, targetW, targetH);
+
+            SoftwareBitmap sb(BitmapPixelFormat::Bgra8, rtb.PixelWidth(), rtb.PixelHeight(), BitmapAlphaMode::Premultiplied);
+            auto buffer = co_await rtb.GetPixelsAsync();
+            sb.CopyFromBuffer(buffer);
+
+            Log(L"Rendered: " + to_hstring(sb.PixelWidth()) + L"x" + to_hstring(sb.PixelHeight()));
+
+            auto stream = co_await file.OpenAsync(FileAccessMode::ReadWrite);
+            auto enc = co_await BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), stream);
+            enc.SetSoftwareBitmap(sb);
+            enc.BitmapTransform().InterpolationMode(BitmapInterpolationMode::Fant);
+            co_await enc.FlushAsync();
+
+            Log(L"Save Complete.");
+        }
+        catch (hresult_error const& ex) {
+            Log(L"Save failed: " + ex.message());
         }
     }
 
-    winrt::Windows::Foundation::IAsyncOperation<SoftwareBitmap> MainWindow::CaptureElementAsync(UIElement el)
+    // ──────────────────────────────────────────────────────────────
+    // Image loading (file picker + drag-and-drop)
+    // ──────────────────────────────────────────────────────────────
+
+    winrt::fire_and_forget MainWindow::BtnPickImage_Click(IInspectable const&, RoutedEventArgs const&)
     {
-        RenderTargetBitmap r;
-        co_await r.RenderAsync(el);
-        SoftwareBitmap sb(BitmapPixelFormat::Bgra8, r.PixelWidth(), r.PixelHeight(), BitmapAlphaMode::Premultiplied);
-        auto buffer = co_await r.GetPixelsAsync();
-        sb.CopyFromBuffer(buffer);
-        co_return sb;
+        auto strong = get_strong();
+
+        FileOpenPicker picker;
+        auto initWnd{ picker.as<::IInitializeWithWindow>() };
+        HWND hwnd;
+        auto windowNative{ this->try_as<::IWindowNative>() };
+        windowNative->get_WindowHandle(&hwnd);
+        initWnd->Initialize(hwnd);
+        picker.FileTypeFilter().ReplaceAll({ L".jpg", L".png", L".jpeg", L".bmp", L".tiff" });
+        StorageFile file = co_await picker.PickSingleFileAsync();
+        if (file) co_await LoadImageFromFile(file);
     }
 
-    void MainWindow::BtnRotate_Click(IInspectable const&, RoutedEventArgs const&)
+    winrt::Windows::Foundation::IAsyncAction MainWindow::LoadImageFromFile(StorageFile file)
     {
-        Log(L"Rotate Source Clicked.");
-        auto rotateOp = [this]() -> winrt::Windows::Foundation::IAsyncAction {
-            if (!this->m_originalBitmap) co_return;
+        auto strong = get_strong();
+        Log(L"Loading Image: " + file.Path());
 
-            InMemoryRandomAccessStream stream;
-            auto encoder = co_await BitmapEncoder::CreateAsync(BitmapEncoder::PngEncoderId(), stream);
-            encoder.SetSoftwareBitmap(this->m_originalBitmap);
+        try
+        {
+            auto stream = co_await file.OpenAsync(FileAccessMode::Read);
+            auto decoder = co_await BitmapDecoder::CreateAsync(stream);
+            m_originalBitmap = co_await decoder.GetSoftwareBitmapAsync();
 
-            encoder.BitmapTransform().Rotation(BitmapRotation::Clockwise90Degrees);
-
-            try {
-                co_await encoder.FlushAsync();
-                stream.Seek(0);
-                auto decoder = co_await BitmapDecoder::CreateAsync(stream);
-                this->m_originalBitmap = co_await decoder.GetSoftwareBitmapAsync();
-
-                if (this->m_originalBitmap.BitmapPixelFormat() != BitmapPixelFormat::Bgra8 ||
-                    this->m_originalBitmap.BitmapAlphaMode() != BitmapAlphaMode::Premultiplied)
-                {
-                    this->m_originalBitmap = SoftwareBitmap::Convert(this->m_originalBitmap, BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied);
-                }
-
-                SoftwareBitmapSource src;
-                co_await src.SetBitmapAsync(this->m_originalBitmap);
-
-                if (this->SourceImageControl()) this->SourceImageControl().Source(src);
-                if (this->ZoomSlider()) this->ZoomSlider().Value(1.0);
-                if (this->ImageRotation()) this->ImageRotation().Angle(0);
-
-                this->m_croppedStamp = nullptr;
-                co_await this->RegeneratePreviewGrid();
-                Log(L"Rotation Complete.");
+            if (m_originalBitmap.BitmapPixelFormat() != BitmapPixelFormat::Bgra8 ||
+                m_originalBitmap.BitmapAlphaMode()   != BitmapAlphaMode::Premultiplied)
+            {
+                m_originalBitmap = SoftwareBitmap::Convert(m_originalBitmap, BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied);
             }
-            catch (...) { Log(L"Rotation Failed."); }
-            };
-        rotateOp();
-    }
 
-    void MainWindow::OnImagePointerWheelChanged(IInspectable const&, PointerRoutedEventArgs const& e)
-    {
-        if (!this->CropScrollViewer()) return;
+            SoftwareBitmapSource src;
+            co_await src.SetBitmapAsync(m_originalBitmap);
+            if (SourceImageControl()) SourceImageControl().Source(src);
 
-        int delta = e.GetCurrentPoint(this->CropScrollViewer()).Properties().MouseWheelDelta();
+            // Clear old stamps
+            m_croppedStamp = nullptr;
+            m_croppedStampRotated = nullptr;
 
-        double oldZoom = 1.0;
-        if (this->ZoomSlider()) oldZoom = this->ZoomSlider().Value();
+            co_await RegeneratePreviewGrid();
 
-        double newZoom = (delta > 0) ? oldZoom + 0.1 : oldZoom - 0.1;
-
-        if (this->ZoomSlider()) {
-            if (newZoom < this->ZoomSlider().Minimum()) newZoom = this->ZoomSlider().Minimum();
-            if (newZoom > this->ZoomSlider().Maximum()) newZoom = this->ZoomSlider().Maximum();
+            // Delay zoom-to-fit slightly to allow layout to complete
+            auto dispatcher = this->DispatcherQueue();
+            if (dispatcher)
+            {
+                auto weak = get_weak();
+                dispatcher.TryEnqueue([weak]()
+                {
+                    if (auto self = weak.get())
+                    {
+                        self->ZoomToFit();
+                    }
+                });
+            }
+            Log(L"Image loaded. Size: " + to_hstring(m_originalBitmap.PixelWidth()) + L"x" + to_hstring(m_originalBitmap.PixelHeight()));
         }
-
-        if (newZoom == oldZoom) return;
-
-        auto pt = e.GetCurrentPoint(this->CropScrollViewer()).Position();
-        double hOff = this->CropScrollViewer().HorizontalOffset();
-        double vOff = this->CropScrollViewer().VerticalOffset();
-
-        double newH = ((hOff + pt.X) / oldZoom) * newZoom - pt.X;
-        double newV = ((vOff + pt.Y) / oldZoom) * newZoom - pt.Y;
-
-        this->m_zoomingFromMouse = true;
-        if (this->ZoomSlider()) this->ZoomSlider().Value(newZoom);
-        this->CropScrollViewer().ChangeView(newH, newV, static_cast<float>(newZoom));
-        this->m_zoomingFromMouse = false;
-        e.Handled(true);
+        catch (hresult_error const& ex) {
+            Log(L"LoadImageFromFile failed: " + ex.message());
+        }
     }
+
+    // ──────────────────────────────────────────────────────────────
+    // Pointer input for crop panning + mouse-wheel zoom
+    // ──────────────────────────────────────────────────────────────
 
     void MainWindow::OnImagePointerPressed(IInspectable const& sender, PointerRoutedEventArgs const& e)
     {
-        auto img = sender.as<Image>();
-        if (!img) return;
-        img.CapturePointer(e.Pointer());
-        this->m_isDragging = true;
-        if (this->CropScrollViewer())
-            this->m_lastPoint = e.GetCurrentPoint(this->CropScrollViewer()).Position();
+        auto el = sender.try_as<UIElement>();
+        if (!el) return;
+        el.CapturePointer(e.Pointer());
+        m_isDragging = true;
+        if (CropScrollViewer())
+            m_lastPoint = e.GetCurrentPoint(CropScrollViewer()).Position();
+        e.Handled(true);
     }
 
     void MainWindow::OnImagePointerMoved(IInspectable const&, PointerRoutedEventArgs const& e)
     {
-        if (this->m_isDragging && this->CropScrollViewer())
-        {
-            auto pt = e.GetCurrentPoint(this->CropScrollViewer()).Position();
-            this->CropScrollViewer().ChangeView(this->CropScrollViewer().HorizontalOffset() - (pt.X - this->m_lastPoint.X),
-                this->CropScrollViewer().VerticalOffset() - (pt.Y - this->m_lastPoint.Y), nullptr);
-            this->m_lastPoint = pt;
-        }
+        if (!m_isDragging || !CropScrollViewer()) return;
+
+        auto pt = e.GetCurrentPoint(CropScrollViewer()).Position();
+        double dx = pt.X - m_lastPoint.X;
+        double dy = pt.Y - m_lastPoint.Y;
+
+        CropScrollViewer().ChangeView(
+            CropScrollViewer().HorizontalOffset() - dx,
+            CropScrollViewer().VerticalOffset()  - dy,
+            nullptr);
+
+        m_lastPoint = pt;
+        e.Handled(true);
     }
 
     void MainWindow::OnImagePointerReleased(IInspectable const& sender, PointerRoutedEventArgs const& e)
     {
-        this->m_isDragging = false;
-        auto img = sender.try_as<Image>();
-        if (img) img.ReleasePointerCapture(e.Pointer());
+        m_isDragging = false;
+        auto el = sender.try_as<UIElement>();
+        if (el) el.ReleasePointerCapture(e.Pointer());
+        e.Handled(true);
     }
+
+    void MainWindow::OnImagePointerWheelChanged(IInspectable const&, PointerRoutedEventArgs const& e)
+    {
+        auto scroller = CropScrollViewer();
+        if (!scroller) return;
+
+        int delta = e.GetCurrentPoint(scroller).Properties().MouseWheelDelta();
+        double oldZoom = scroller.ZoomFactor();
+        double step = oldZoom * 0.1; // 10% step for smooth feel
+        double newZoom = (delta > 0) ? oldZoom + step : oldZoom - step;
+        newZoom = std::clamp(newZoom, 0.1, 10.0);
+
+        if (newZoom == oldZoom) { e.Handled(true); return; }
+
+        auto pt = e.GetCurrentPoint(scroller).Position();
+        double hOff = scroller.HorizontalOffset();
+        double vOff = scroller.VerticalOffset();
+
+        // Zoom toward cursor position
+        double newH = ((hOff + pt.X) / oldZoom) * newZoom - pt.X;
+        double newV = ((vOff + pt.Y) / oldZoom) * newZoom - pt.Y;
+
+        m_zoomingFromMouse = true;
+        if (ZoomSlider()) ZoomSlider().Value(newZoom);
+        scroller.ChangeView(newH, newV, static_cast<float>(newZoom));
+        m_zoomingFromMouse = false;
+
+        e.Handled(true);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Drag & drop
+    // ──────────────────────────────────────────────────────────────
 
     void MainWindow::OnDragOver(IInspectable const&, DragEventArgs const& e)
     {
-        if (e.DataView().Contains(StandardDataFormats::StorageItems())) e.AcceptedOperation(DataPackageOperation::Copy);
+        if (e.DataView().Contains(StandardDataFormats::StorageItems()))
+            e.AcceptedOperation(DataPackageOperation::Copy);
     }
 
     winrt::fire_and_forget MainWindow::OnDrop(IInspectable const&, DragEventArgs const& e)
     {
-        if (e.DataView().Contains(StandardDataFormats::StorageItems()))
-        {
-            auto items = co_await e.DataView().GetStorageItemsAsync();
-            if (items.Size() > 0 && items.GetAt(0).IsOfType(StorageItemTypes::File)) {
-                co_await this->LoadImageFromFile(items.GetAt(0).as<winrt::Windows::Storage::StorageFile>());
-            }
-        }
-    }
+        auto strong = get_strong();
+        if (!e.DataView().Contains(StandardDataFormats::StorageItems())) co_return;
 
-    winrt::Windows::Foundation::IAsyncAction MainWindow::LoadImageFromFile(winrt::Windows::Storage::StorageFile file)
-    {
-        Log(L"Loading Image: " + file.Path());
-        auto stream = co_await file.OpenAsync(FileAccessMode::Read);
-
-        auto decoder = co_await BitmapDecoder::CreateAsync(stream);
-        this->m_originalBitmap = co_await decoder.GetSoftwareBitmapAsync();
-
-        if (m_originalBitmap.BitmapPixelFormat() != BitmapPixelFormat::Bgra8 || m_originalBitmap.BitmapAlphaMode() != BitmapAlphaMode::Premultiplied)
-        {
-            m_originalBitmap = SoftwareBitmap::Convert(m_originalBitmap, BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied);
-        }
-
-        SoftwareBitmapSource src;
-        co_await src.SetBitmapAsync(m_originalBitmap);
-        if (this->SourceImageControl()) this->SourceImageControl().Source(src);
-
-        if (this->ZoomSlider()) this->ZoomSlider().Value(1.0);
-        if (this->ImageRotation()) this->ImageRotation().Angle(0);
-
-        this->m_croppedStamp = nullptr;
-        co_await this->RegeneratePreviewGrid();
-    }
-
-    winrt::fire_and_forget MainWindow::BtnPickImage_Click(IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&)
-    {
-        FileOpenPicker picker;
-        auto initializeWithWindow{ picker.as<::IInitializeWithWindow>() };
-        HWND hwnd;
-        auto windowNative{ this->try_as<::IWindowNative>() };
-        windowNative->get_WindowHandle(&hwnd);
-        initializeWithWindow->Initialize(hwnd);
-        picker.FileTypeFilter().ReplaceAll({ L".jpg", L".png", L".jpeg" });
-        StorageFile file = co_await picker.PickSingleFileAsync();
-        if (file) co_await this->LoadImageFromFile(file);
+        auto items = co_await e.DataView().GetStorageItemsAsync();
+        if (items.Size() > 0 && items.GetAt(0).IsOfType(StorageItemTypes::File))
+            co_await LoadImageFromFile(items.GetAt(0).as<StorageFile>());
     }
 }

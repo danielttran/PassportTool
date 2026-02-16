@@ -92,17 +92,14 @@
 
                     <ScrollViewer x:Name="CropScrollViewer" 
                                   HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
+                                  HorizontalScrollMode="Enabled" VerticalScrollMode="Enabled"
                                   ZoomMode="Enabled" MinZoomFactor="0.1" MaxZoomFactor="10.0"
                                   HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
 
                         <Image x:Name="SourceImageControl" Stretch="None"
                                PointerPressed="OnImagePointerPressed" PointerMoved="OnImagePointerMoved"
                                PointerReleased="OnImagePointerReleased" PointerCanceled="OnImagePointerReleased"
-                               PointerWheelChanged="OnImagePointerWheelChanged">
-                            <Image.RenderTransform>
-                                <RotateTransform x:Name="ImageRotation" Angle="0" CenterX="0.5" CenterY="0.5"/>
-                            </Image.RenderTransform>
-                        </Image>
+                               PointerWheelChanged="OnImagePointerWheelChanged"/>
                     </ScrollViewer>
                 </Border>
             </Grid>
@@ -116,7 +113,7 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <FontIcon Glyph="&#xE71E;" Grid.Column="0" Margin="0,0,10,0" Foreground="Gray"/>
-                        <Slider x:Name="ZoomSlider" Grid.Column="1" Minimum="0.1" Maximum="5.0" StepFrequency="0.1" Value="1.0" />
+                        <Slider x:Name="ZoomSlider" Grid.Column="1" Minimum="0.1" Maximum="5.0" StepFrequency="0.01" Value="1.0" />
                     </Grid>
 
                     <Grid ColumnSpacing="10">
