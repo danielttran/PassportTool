@@ -35,6 +35,9 @@ namespace winrt::PassportTool::implementation
         void OnUnitChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
         void OnSettingsChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const& sender, winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const& args);
 
+        // Rotation
+        void OnRotationChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& e);
+
         // Input
         void OnImagePointerPressed(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnImagePointerMoved(winrt::Windows::Foundation::IInspectable const& sender, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
@@ -63,7 +66,10 @@ namespace winrt::PassportTool::implementation
 
         // High-res processing
         winrt::Windows::Foundation::IAsyncAction LoadImageFromFile(winrt::Windows::Storage::StorageFile file);
+
+        // UPDATED: Now returns a render capture of the viewport
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Graphics::Imaging::SoftwareBitmap> CaptureCropAsBitmap();
+
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Graphics::Imaging::SoftwareBitmap> RotateBitmap90(winrt::Windows::Graphics::Imaging::SoftwareBitmap bmp);
         void ZoomToFit();
 
@@ -75,7 +81,6 @@ namespace winrt::PassportTool::implementation
 
         bool m_isDragging{ false };
         bool m_zoomingFromMouse{ false };
-        bool m_zoomingFromSlider{ false };
         winrt::Windows::Foundation::Point m_lastPoint{ 0,0 };
 
         std::vector<ImagePlacement> m_currentPlacements;

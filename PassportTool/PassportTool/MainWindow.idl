@@ -9,10 +9,13 @@ namespace PassportTool
 		void BtnPickImage_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
 		void BtnApplyCrop_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
 		void BtnSaveSheet_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
-		void BtnRotate_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
+		void BtnRotate_Click(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e); // Keep for 90deg button if needed, or repurposed
 
 		void OnUnitChanged(Object sender, Microsoft.UI.Xaml.RoutedEventArgs e);
 		void OnSettingsChanged(Microsoft.UI.Xaml.Controls.NumberBox sender, Microsoft.UI.Xaml.Controls.NumberBoxValueChangedEventArgs args);
+
+		// New Rotation Handler
+		void OnRotationChanged(Object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e);
 
 		// Pointer events for the crop tool
 		void OnImagePointerPressed(Object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e);

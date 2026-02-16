@@ -6,6 +6,8 @@
 #include <cmath>
 #include <algorithm>
 #include <vector>
+#include <iomanip>
+#include <sstream>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -46,29 +48,8 @@ namespace winrt::PassportTool::implementation
         if (NbImageW()) NbImageW().NumberFormatter(formatter);
         if (NbImageH()) NbImageH().NumberFormatter(formatter);
 
-        // Slider -> ScrollViewer zoom
-        if (ZoomSlider())
-        {
-            ZoomSlider().ValueChanged([this](auto&&, auto&& args)
-            {
-                if (m_zoomingFromMouse) return;
-                m_zoomingFromSlider = true;
-                if (CropScrollViewer())
-                    CropScrollViewer().ChangeView(nullptr, nullptr, static_cast<float>(args.NewValue()), true);
-                m_zoomingFromSlider = false;
-            });
-        }
-
-        // ScrollViewer -> Slider sync
-        if (CropScrollViewer())
-        {
-            CropScrollViewer().ViewChanged([this](auto&&, auto&&)
-            {
-                if (m_zoomingFromSlider || m_zoomingFromMouse) return;
-                if (CropScrollViewer() && ZoomSlider())
-                    ZoomSlider().Value(CropScrollViewer().ZoomFactor());
-            });
-        }
+        // Zoom Slider logic removed.
+        // Rotation Slider logic is handled in OnRotationChanged.
     }
 
     void MainWindow::Log([[maybe_unused]] winrt::hstring const& message)
@@ -86,6 +67,29 @@ namespace winrt::PassportTool::implementation
         RefitCropContainer();
         UpdateCellDimensionsDisplay();
         RegeneratePreviewGrid();
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Rotation Logic (New)
+    // ──────────────────────────────────────────────────────────────
+
+    void MainWindow::OnRotationChanged(IInspectable const&, Primitives::RangeBaseValueChangedEventArgs const& e)
+    {
+        double angle = e.NewValue();
+
+        // 1. Update visual rotation
+        if (auto transform = ImageRotateTransform())
+        {
+            transform.Angle(angle);
+        }
+
+        // 2. Update text label
+        if (auto txt = TxtRotationValue())
+        {
+            std::wstringstream wss;
+            wss << std::fixed << std::setprecision(1) << angle << L"\u00B0"; // Degree symbol
+            txt.Text(wss.str().c_str());
+        }
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -133,7 +137,7 @@ namespace winrt::PassportTool::implementation
 
         auto convert = [&](NumberBox const& box) {
             if (box) box.Value(box.Value() * factor);
-        };
+            };
 
         m_isLoaded = false;
         convert(NbSheetW());
@@ -177,7 +181,7 @@ namespace winrt::PassportTool::implementation
     }
 
     // ──────────────────────────────────────────────────────────────
-    // Crop-container sizing (match image cell aspect ratio)
+    // Crop-container sizing
     // ──────────────────────────────────────────────────────────────
 
     void MainWindow::RefitCropContainer()
@@ -212,64 +216,45 @@ namespace winrt::PassportTool::implementation
 
     // ──────────────────────────────────────────────────────────────
     // OPTIMAL PLACEMENT ALGORITHM
-    //
-    // Layout model:  [gap] cell [gap] cell [gap] ... cell [gap]
-    //
-    // For dimension D, cell size s, gap g:
-    //   Count N = floor( (D - g) / (s + g) )
-    //   Cell i position = g + i * (s + g)
-    //   Last cell right edge = N * (s + g)
-    //
-    // Zone boundary placed at N*(s+g) so that the next zone's
-    // leading gap gives exactly one gap between cells.
     // ──────────────────────────────────────────────────────────────
 
     std::vector<ImagePlacement> MainWindow::CalculateOptimalPlacement(
         double sheetW, double sheetH, double imgW, double imgH, double gap)
     {
-        double ppu  = GetPixelsPerUnit();
-        double g    = gap * ppu;
+        double ppu = GetPixelsPerUnit();
+        double g = gap * ppu;
         double sWpx = sheetW * ppu;
         double sHpx = sheetH * ppu;
 
-        double cW_n = imgW * ppu;       // normal cell W
-        double cH_n = imgH * ppu;       // normal cell H
-        double cW_r = imgH * ppu;       // rotated cell W  (swapped)
-        double cH_r = imgW * ppu;       // rotated cell H
+        double cW_n = imgW * ppu;
+        double cH_n = imgH * ppu;
+        double cW_r = imgH * ppu;
+        double cH_r = imgW * ppu;
 
-        // Count: g + N*(s+g) <= D  =>  N = floor((D-g)/(s+g))
         auto fitCount = [](double D, double s, double g) -> int {
             if (s <= 0 || D < s + 2.0 * g) return 0;
             return static_cast<int>(std::floor((D - g) / (s + g)));
-        };
+            };
 
-        // Build uniform grid in sub-area [ox..ox+aW) x [oy..oy+aH)
         auto buildGrid = [&](double ox, double oy, double aW, double aH,
-                             double cW, double cH, bool rot) -> std::vector<ImagePlacement>
-        {
-            int cols = fitCount(aW, cW, g);
-            int rows = fitCount(aH, cH, g);
-            std::vector<ImagePlacement> out;
-            if (cols <= 0 || rows <= 0) return out;
-            out.reserve(static_cast<size_t>(rows) * cols);
-            for (int r = 0; r < rows; ++r)
-                for (int c = 0; c < cols; ++c)
-                    out.push_back({
-                        ox + g + c * (cW + g),
-                        oy + g + r * (cH + g),
-                        cW, cH, rot });
-            return out;
-        };
+            double cW, double cH, bool rot) -> std::vector<ImagePlacement>
+            {
+                int cols = fitCount(aW, cW, g);
+                int rows = fitCount(aH, cH, g);
+                std::vector<ImagePlacement> out;
+                if (cols <= 0 || rows <= 0) return out;
+                out.reserve(static_cast<size_t>(rows) * cols);
+                for (int r = 0; r < rows; ++r)
+                    for (int c = 0; c < cols; ++c)
+                        out.push_back({
+                            ox + g + c * (cW + g),
+                            oy + g + r * (cH + g),
+                            cW, cH, rot });
+                return out;
+            };
 
-        // Space consumed by N rows/cols (bottom/right edge of last cell).
-        // Does NOT include trailing gap; the next zone supplies its own
-        // leading gap, yielding exactly one gap at the boundary.
-        auto bandH = [&](int n, double cH) -> double {
-            return (n <= 0) ? 0.0 : n * (cH + g);
-        };
-        auto bandW = [&](int n, double cW) -> double {
-            return (n <= 0) ? 0.0 : n * (cW + g);
-        };
+        auto bandH = [&](int n, double cH) -> double { return (n <= 0) ? 0.0 : n * (cH + g); };
+        auto bandW = [&](int n, double cW) -> double { return (n <= 0) ? 0.0 : n * (cW + g); };
 
         int bestCount = 0;
         std::vector<ImagePlacement> best;
@@ -282,24 +267,15 @@ namespace winrt::PassportTool::implementation
                 best = std::move(p);
                 bestDesc = desc;
             }
-        };
+            };
 
-        auto fmtGrid = [](int rows, int cols, bool rot) -> hstring {
-            return to_hstring(rows) + L"\u00D7" + to_hstring(cols) + (rot ? L"R" : L"");
-        };
-
-        // Strategy 1: pure normal
         {
-            int c = fitCount(sWpx, cW_n, g), r = fitCount(sHpx, cH_n, g);
             auto p = buildGrid(0, 0, sWpx, sHpx, cW_n, cH_n, false);
-            tryCandidate(p, to_hstring((int)p.size()) + L" (" + fmtGrid(r, c, false) + L")");
+            tryCandidate(p, to_hstring((int)p.size()) + L" (N)");
         }
-
-        // Strategy 2: pure rotated
         {
-            int c = fitCount(sWpx, cW_r, g), r = fitCount(sHpx, cH_r, g);
             auto p = buildGrid(0, 0, sWpx, sHpx, cW_r, cH_r, true);
-            tryCandidate(p, to_hstring((int)p.size()) + L" (" + fmtGrid(r, c, true) + L")");
+            tryCandidate(p, to_hstring((int)p.size()) + L" (R)");
         }
 
         bool isSquare = std::abs(imgW - imgH) < 0.001;
@@ -310,93 +286,24 @@ namespace winrt::PassportTool::implementation
             int maxNC = fitCount(sWpx, cW_n, g);
             int maxRC = fitCount(sWpx, cW_r, g);
 
-            // Strategies 3-4: horizontal band split
             for (int nR = 0; nR <= maxNR; ++nR) {
                 double sy = bandH(nR, cH_n);
                 auto pT = buildGrid(0, 0, sWpx, sy, cW_n, cH_n, false);
                 auto pB = buildGrid(0, sy, sWpx, sHpx - sy, cW_r, cH_r, true);
                 pT.insert(pT.end(), pB.begin(), pB.end());
-                tryCandidate(pT, to_hstring((int)pT.size()) + L" (H " + to_hstring(nR) + L"n+r)");
+                tryCandidate(pT, to_hstring((int)pT.size()) + L" (Mix H)");
             }
-            for (int nR = 0; nR <= maxRR; ++nR) {
-                double sy = bandH(nR, cH_r);
-                auto pT = buildGrid(0, 0, sWpx, sy, cW_r, cH_r, true);
-                auto pB = buildGrid(0, sy, sWpx, sHpx - sy, cW_n, cH_n, false);
-                pT.insert(pT.end(), pB.begin(), pB.end());
-                tryCandidate(pT, to_hstring((int)pT.size()) + L" (H " + to_hstring(nR) + L"r+n)");
-            }
-
-            // Strategies 5-6: vertical band split
             for (int nC = 0; nC <= maxNC; ++nC) {
                 double sx = bandW(nC, cW_n);
                 auto pL = buildGrid(0, 0, sx, sHpx, cW_n, cH_n, false);
                 auto pR = buildGrid(sx, 0, sWpx - sx, sHpx, cW_r, cH_r, true);
                 pL.insert(pL.end(), pR.begin(), pR.end());
-                tryCandidate(pL, to_hstring((int)pL.size()) + L" (V " + to_hstring(nC) + L"n+r)");
-            }
-            for (int nC = 0; nC <= maxRC; ++nC) {
-                double sx = bandW(nC, cW_r);
-                auto pL = buildGrid(0, 0, sx, sHpx, cW_r, cH_r, true);
-                auto pR = buildGrid(sx, 0, sWpx - sx, sHpx, cW_n, cH_n, false);
-                pL.insert(pL.end(), pR.begin(), pR.end());
-                tryCandidate(pL, to_hstring((int)pL.size()) + L" (V " + to_hstring(nC) + L"r+n)");
-            }
-
-            // Strategies 7-8: L-shaped 3-zone (top full-width, bottom split)
-            for (int topR = 0; topR <= maxNR; ++topR) {
-                double sy = bandH(topR, cH_n);
-                double bH = sHpx - sy;
-                if (bH < g) continue;
-
-                for (int blc = 0, mx = fitCount(sWpx, cW_r, g); blc <= mx; ++blc) {
-                    double sx = bandW(blc, cW_r);
-                    auto pT  = buildGrid(0, 0, sWpx, sy, cW_n, cH_n, false);
-                    auto pBL = buildGrid(0, sy, sx, bH, cW_r, cH_r, true);
-                    auto pBR = buildGrid(sx, sy, sWpx - sx, bH, cW_n, cH_n, false);
-                    pT.insert(pT.end(), pBL.begin(), pBL.end());
-                    pT.insert(pT.end(), pBR.begin(), pBR.end());
-                    tryCandidate(pT, to_hstring((int)pT.size()) + L" (L n|r+n)");
-                }
-                for (int blc = 0, mx = fitCount(sWpx, cW_n, g); blc <= mx; ++blc) {
-                    double sx = bandW(blc, cW_n);
-                    auto pT  = buildGrid(0, 0, sWpx, sy, cW_n, cH_n, false);
-                    auto pBL = buildGrid(0, sy, sx, bH, cW_n, cH_n, false);
-                    auto pBR = buildGrid(sx, sy, sWpx - sx, bH, cW_r, cH_r, true);
-                    pT.insert(pT.end(), pBL.begin(), pBL.end());
-                    pT.insert(pT.end(), pBR.begin(), pBR.end());
-                    tryCandidate(pT, to_hstring((int)pT.size()) + L" (L n|n+r)");
-                }
-            }
-            for (int topR = 0; topR <= maxRR; ++topR) {
-                double sy = bandH(topR, cH_r);
-                double bH = sHpx - sy;
-                if (bH < g) continue;
-
-                for (int blc = 0, mx = fitCount(sWpx, cW_n, g); blc <= mx; ++blc) {
-                    double sx = bandW(blc, cW_n);
-                    auto pT  = buildGrid(0, 0, sWpx, sy, cW_r, cH_r, true);
-                    auto pBL = buildGrid(0, sy, sx, bH, cW_n, cH_n, false);
-                    auto pBR = buildGrid(sx, sy, sWpx - sx, bH, cW_r, cH_r, true);
-                    pT.insert(pT.end(), pBL.begin(), pBL.end());
-                    pT.insert(pT.end(), pBR.begin(), pBR.end());
-                    tryCandidate(pT, to_hstring((int)pT.size()) + L" (L r|n+r)");
-                }
-                for (int blc = 0, mx = fitCount(sWpx, cW_r, g); blc <= mx; ++blc) {
-                    double sx = bandW(blc, cW_r);
-                    auto pT  = buildGrid(0, 0, sWpx, sy, cW_r, cH_r, true);
-                    auto pBL = buildGrid(0, sy, sx, bH, cW_r, cH_r, true);
-                    auto pBR = buildGrid(sx, sy, sWpx - sx, bH, cW_n, cH_n, false);
-                    pT.insert(pT.end(), pBL.begin(), pBL.end());
-                    pT.insert(pT.end(), pBR.begin(), pBR.end());
-                    tryCandidate(pT, to_hstring((int)pT.size()) + L" (L r|r+n)");
-                }
+                tryCandidate(pL, to_hstring((int)pL.size()) + L" (Mix V)");
             }
         }
 
-        Log(L"Optimal: " + to_hstring(bestCount) + L" \u2013 " + bestDesc);
-
         if (TxtLayoutInfo())
-            TxtLayoutInfo().Text(bestCount > 0 ? bestDesc : L"Images don't fit on sheet");
+            TxtLayoutInfo().Text(bestCount > 0 ? bestDesc : L"No fit");
 
         return best;
     }
@@ -413,11 +320,11 @@ namespace winrt::PassportTool::implementation
         auto grid = PreviewGrid();
         if (!grid) co_return;
 
-        auto swBox   = NbSheetW();
-        auto shBox   = NbSheetH();
+        auto swBox = NbSheetW();
+        auto shBox = NbSheetH();
         auto imgWBox = NbImageW();
         auto imgHBox = NbImageH();
-        auto gapBox  = NbGap();
+        auto gapBox = NbGap();
         if (!swBox || !shBox || !imgWBox || !imgHBox || !gapBox) co_return;
 
         // Clear
@@ -431,17 +338,16 @@ namespace winrt::PassportTool::implementation
 
         double sheetW = swBox.Value();
         double sheetH = shBox.Value();
-        double imgW   = imgWBox.Value();
-        double imgH   = imgHBox.Value();
-        double gap    = gapBox.Value();
+        double imgW = imgWBox.Value();
+        double imgH = imgHBox.Value();
+        double gap = gapBox.Value();
 
         if (std::isnan(sheetW) || std::isnan(sheetH) || std::isnan(imgW) ||
-            std::isnan(imgH)   || std::isnan(gap)) co_return;
+            std::isnan(imgH) || std::isnan(gap)) co_return;
         if (sheetW <= 0 || sheetH <= 0 || imgW <= 0 || imgH <= 0 || gap < 0) co_return;
 
         m_currentPlacements = CalculateOptimalPlacement(sheetW, sheetH, imgW, imgH, gap);
 
-        // Request #1: blank sheet until user applies a crop
         if (!m_croppedStamp || m_currentPlacements.empty()) co_return;
 
         for (auto& p : m_currentPlacements)
@@ -452,15 +358,11 @@ namespace winrt::PassportTool::implementation
             Image img;
             SoftwareBitmapSource src;
             try { co_await src.SetBitmapAsync(bmp); }
-            catch (hresult_error const& ex) {
-                Log(L"SetBitmapAsync failed: " + ex.message());
-                continue;
-            }
+            catch (hresult_error const&) { continue; }
 
             img.Source(src);
             img.Stretch(Stretch::Uniform);
 
-            // Request #2: red outline on preview (hidden during export)
             Border outline;
             outline.BorderBrush(SolidColorBrush(
                 Microsoft::UI::ColorHelper::FromArgb(255, 220, 50, 50)));
@@ -476,10 +378,6 @@ namespace winrt::PassportTool::implementation
             m_outlineBorders.push_back(outline);
         }
     }
-
-    // ──────────────────────────────────────────────────────────────
-    // Outline visibility for clean export
-    // ──────────────────────────────────────────────────────────────
 
     void MainWindow::SetOutlinesVisible(bool visible)
     {
@@ -507,61 +405,49 @@ namespace winrt::PassportTool::implementation
         co_await RegeneratePreviewGrid();
     }
 
+    // UPDATED: Now uses RenderTargetBitmap to capture exactly what is seen in the crop window (WYSIWYG)
+    // allowing for rotation and arbitrary panning.
     winrt::Windows::Foundation::IAsyncOperation<SoftwareBitmap> MainWindow::CaptureCropAsBitmap()
     {
         if (!m_originalBitmap) co_return nullptr;
+
         auto scroller = CropScrollViewer();
         if (!scroller) co_return nullptr;
 
-        double srcW = static_cast<double>(m_originalBitmap.PixelWidth());
-        double srcH = static_cast<double>(m_originalBitmap.PixelHeight());
+        auto imgWBox = NbImageW();
+        auto imgHBox = NbImageH();
+        if (!imgWBox || !imgHBox) co_return nullptr;
 
-        float  zoom  = scroller.ZoomFactor();
-        double hOff  = scroller.HorizontalOffset();
-        double vOff  = scroller.VerticalOffset();
-        double viewW = scroller.ViewportWidth();
-        double viewH = scroller.ViewportHeight();
+        // Calculate target high-resolution dimensions (300 DPI)
+        // This ensures the capture is not just screen resolution (96 DPI)
+        double ppu = GetPixelsPerUnit();
+        int targetW = static_cast<int>(std::round(imgWBox.Value() * ppu));
+        int targetH = static_cast<int>(std::round(imgHBox.Value() * ppu));
 
-        double cropX = hOff / zoom;
-        double cropY = vOff / zoom;
-        double cropW = viewW / zoom;
-        double cropH = viewH / zoom;
-
-        cropX = std::max(0.0, cropX);
-        cropY = std::max(0.0, cropY);
-        cropW = std::min(cropW, srcW - cropX);
-        cropH = std::min(cropH, srcH - cropY);
-        if (cropW <= 0 || cropH <= 0) co_return nullptr;
-
-        BitmapBounds bounds;
-        bounds.X      = static_cast<uint32_t>(std::floor(cropX));
-        bounds.Y      = static_cast<uint32_t>(std::floor(cropY));
-        bounds.Width   = std::max(1u, static_cast<uint32_t>(std::floor(cropW)));
-        bounds.Height  = std::max(1u, static_cast<uint32_t>(std::floor(cropH)));
-
-        if (bounds.X + bounds.Width  > static_cast<uint32_t>(srcW))
-            bounds.Width  = static_cast<uint32_t>(srcW) - bounds.X;
-        if (bounds.Y + bounds.Height > static_cast<uint32_t>(srcH))
-            bounds.Height = static_cast<uint32_t>(srcH) - bounds.Y;
+        if (targetW <= 0 || targetH <= 0) co_return nullptr;
 
         try
         {
-            InMemoryRandomAccessStream tmp;
-            auto enc = co_await BitmapEncoder::CreateAsync(BitmapEncoder::PngEncoderId(), tmp);
-            enc.SetSoftwareBitmap(m_originalBitmap);
-            enc.BitmapTransform().Bounds(bounds);
-            co_await enc.FlushAsync();
+            // Capture the contents of the ScrollViewer (the crop viewport)
+            RenderTargetBitmap rtb;
 
-            tmp.Seek(0);
-            auto dec = co_await BitmapDecoder::CreateAsync(tmp);
-            auto bmp = co_await dec.GetSoftwareBitmapAsync();
-            if (bmp.BitmapPixelFormat() != BitmapPixelFormat::Bgra8 ||
-                bmp.BitmapAlphaMode()   != BitmapAlphaMode::Premultiplied)
-                bmp = SoftwareBitmap::Convert(bmp, BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied);
-            co_return bmp;
+            // Note: RenderAsync with scaled dimensions asks WinUI to re-rasterize the content 
+            // at that resolution. For high-res images, this maintains quality.
+            co_await rtb.RenderAsync(scroller, targetW, targetH);
+
+            auto buffer = co_await rtb.GetPixelsAsync();
+
+            SoftwareBitmap sb = SoftwareBitmap::CreateCopyFromBuffer(
+                buffer,
+                BitmapPixelFormat::Bgra8,
+                rtb.PixelWidth(),
+                rtb.PixelHeight(),
+                BitmapAlphaMode::Premultiplied);
+
+            co_return sb;
         }
         catch (hresult_error const& ex) {
-            Log(L"Crop failed: " + ex.message());
+            Log(L"Crop capture failed: " + ex.message());
             co_return nullptr;
         }
     }
@@ -580,7 +466,7 @@ namespace winrt::PassportTool::implementation
             auto dec = co_await BitmapDecoder::CreateAsync(stream);
             auto rotated = co_await dec.GetSoftwareBitmapAsync();
             if (rotated.BitmapPixelFormat() != BitmapPixelFormat::Bgra8 ||
-                rotated.BitmapAlphaMode()   != BitmapAlphaMode::Premultiplied)
+                rotated.BitmapAlphaMode() != BitmapAlphaMode::Premultiplied)
                 rotated = SoftwareBitmap::Convert(rotated, BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied);
             co_return rotated;
         }
@@ -592,6 +478,7 @@ namespace winrt::PassportTool::implementation
 
     winrt::fire_and_forget MainWindow::BtnRotate_Click(IInspectable const&, RoutedEventArgs const&)
     {
+        // Rotates the SOURCE image 90 degrees (permanent file-level rotation)
         if (!m_originalBitmap) co_return;
         auto strong = get_strong();
 
@@ -604,6 +491,9 @@ namespace winrt::PassportTool::implementation
             SoftwareBitmapSource src;
             co_await src.SetBitmapAsync(m_originalBitmap);
             if (SourceImageControl()) SourceImageControl().Source(src);
+
+            // Reset visual rotation
+            if (auto s = RotationSlider()) s.Value(0);
 
             ZoomToFit();
 
@@ -636,20 +526,16 @@ namespace winrt::PassportTool::implementation
             if (vpW <= 0 || vpH <= 0) {
                 auto c = CropContainer();
                 if (c) { vpW = c.ActualWidth(); vpH = c.ActualHeight(); }
-                if (vpW <= 0 || vpH <= 0) return;
             }
 
-            float z = static_cast<float>(std::min(vpW / imgW, vpH / imgH));
-            z = std::clamp(z, 0.1f, 10.0f);
-
-            m_zoomingFromMouse = true;
-            scroller.ChangeView(0.0, 0.0, z, true);
-            if (ZoomSlider()) ZoomSlider().Value(z);
-            m_zoomingFromMouse = false;
+            if (vpW > 0 && vpH > 0)
+            {
+                float z = static_cast<float>(std::min(vpW / imgW, vpH / imgH));
+                z = std::clamp(z, 0.1f, 10.0f);
+                scroller.ChangeView(0.0, 0.0, z, true);
+            }
         }
-        catch (hresult_error const&) {
-            m_zoomingFromMouse = false;
-        }
+        catch (hresult_error const&) {}
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -669,7 +555,7 @@ namespace winrt::PassportTool::implementation
         windowNative->get_WindowHandle(&hwnd);
         initWnd->Initialize(hwnd);
         picker.FileTypeChoices().Insert(L"JPEG", single_threaded_vector<hstring>({ L".jpg" }));
-        picker.FileTypeChoices().Insert(L"PNG",  single_threaded_vector<hstring>({ L".png" }));
+        picker.FileTypeChoices().Insert(L"PNG", single_threaded_vector<hstring>({ L".png" }));
         picker.SuggestedFileName(L"PassportSheet");
 
         StorageFile file = co_await picker.PickSaveFileAsync();
@@ -677,7 +563,6 @@ namespace winrt::PassportTool::implementation
 
         try
         {
-            // Hide outlines for clean export
             SetOutlinesVisible(false);
 
             int targetW = static_cast<int>(grid.Width());
@@ -687,7 +572,7 @@ namespace winrt::PassportTool::implementation
             double scale = 1.0;
             if (targetW > kMaxDim || targetH > kMaxDim) {
                 scale = std::min(static_cast<double>(kMaxDim) / targetW,
-                                 static_cast<double>(kMaxDim) / targetH);
+                    static_cast<double>(kMaxDim) / targetH);
                 targetW = static_cast<int>(targetW * scale);
                 targetH = static_cast<int>(targetH * scale);
             }
@@ -696,8 +581,8 @@ namespace winrt::PassportTool::implementation
             co_await rtb.RenderAsync(grid, targetW, targetH);
 
             SoftwareBitmap sb(BitmapPixelFormat::Bgra8,
-                              rtb.PixelWidth(), rtb.PixelHeight(),
-                              BitmapAlphaMode::Premultiplied);
+                rtb.PixelWidth(), rtb.PixelHeight(),
+                BitmapAlphaMode::Premultiplied);
             auto buffer = co_await rtb.GetPixelsAsync();
             sb.CopyFromBuffer(buffer);
 
@@ -705,7 +590,7 @@ namespace winrt::PassportTool::implementation
 
             auto ext = file.FileType();
             auto encoderId = (ext == L".png") ? BitmapEncoder::PngEncoderId()
-                                              : BitmapEncoder::JpegEncoderId();
+                : BitmapEncoder::JpegEncoderId();
 
             auto stream = co_await file.OpenAsync(FileAccessMode::ReadWrite);
             auto enc = co_await BitmapEncoder::CreateAsync(encoderId, stream);
@@ -726,7 +611,6 @@ namespace winrt::PassportTool::implementation
     winrt::fire_and_forget MainWindow::BtnPickImage_Click(IInspectable const&, RoutedEventArgs const&)
     {
         auto strong = get_strong();
-
         FileOpenPicker picker;
         auto initWnd{ picker.as<::IInitializeWithWindow>() };
         HWND hwnd;
@@ -741,7 +625,6 @@ namespace winrt::PassportTool::implementation
     winrt::Windows::Foundation::IAsyncAction MainWindow::LoadImageFromFile(StorageFile file)
     {
         auto strong = get_strong();
-
         try
         {
             auto stream = co_await file.OpenAsync(FileAccessMode::Read);
@@ -749,20 +632,24 @@ namespace winrt::PassportTool::implementation
             m_originalBitmap = co_await decoder.GetSoftwareBitmapAsync();
 
             if (m_originalBitmap.BitmapPixelFormat() != BitmapPixelFormat::Bgra8 ||
-                m_originalBitmap.BitmapAlphaMode()   != BitmapAlphaMode::Premultiplied)
+                m_originalBitmap.BitmapAlphaMode() != BitmapAlphaMode::Premultiplied)
                 m_originalBitmap = SoftwareBitmap::Convert(
                     m_originalBitmap, BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied);
 
             SoftwareBitmapSource src;
             co_await src.SetBitmapAsync(m_originalBitmap);
-            if (SourceImageControl()) SourceImageControl().Source(src);
+            if (SourceImageControl())
+            {
+                SourceImageControl().Source(src);
+                if (auto t = ImageRotateTransform()) t.Angle(0);
+            }
+            if (RotationSlider()) RotationSlider().Value(0);
 
             m_croppedStamp = nullptr;
             m_croppedStampRotated = nullptr;
 
             co_await RegeneratePreviewGrid();
 
-            // Zoom-to-fit after layout settles
             auto weak = get_weak();
             if (auto dq = this->DispatcherQueue())
                 dq.TryEnqueue([weak]() { if (auto s = weak.get()) s->ZoomToFit(); });
@@ -797,10 +684,9 @@ namespace winrt::PassportTool::implementation
         double dx = pt.X - m_lastPoint.X;
         double dy = pt.Y - m_lastPoint.Y;
 
-        // disableAnimation = true  =>  instant, lag-free panning
         scroller.ChangeView(
             scroller.HorizontalOffset() - dx,
-            scroller.VerticalOffset()   - dy,
+            scroller.VerticalOffset() - dy,
             nullptr, true);
 
         m_lastPoint = pt;
@@ -834,15 +720,10 @@ namespace winrt::PassportTool::implementation
         double newV = ((vOff + pt.Y) / oldZoom) * newZoom - pt.Y;
 
         m_zoomingFromMouse = true;
-        if (ZoomSlider()) ZoomSlider().Value(newZoom);
         scroller.ChangeView(newH, newV, static_cast<float>(newZoom), true);
         m_zoomingFromMouse = false;
         e.Handled(true);
     }
-
-    // ──────────────────────────────────────────────────────────────
-    // Drag & drop
-    // ──────────────────────────────────────────────────────────────
 
     void MainWindow::OnDragOver(IInspectable const&, DragEventArgs const& e)
     {

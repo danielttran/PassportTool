@@ -36,8 +36,7 @@
 
                         <NumberBox x:Name="NbSheetW" Header="Sheet Width" Value="6" Minimum="1" Maximum="100" ValueChanged="OnSettingsChanged"/>
                         <NumberBox x:Name="NbSheetH" Header="Sheet Height" Value="4" Minimum="1" Maximum="100" ValueChanged="OnSettingsChanged"/>
-
-                        <NumberBox x:Name="NbGap" Header="Gap" Value="0.10" Minimum="0" Maximum="5.0" SmallChange="0.01" LargeChange="0.1" ValueChanged="OnSettingsChanged"/>
+                        <NumberBox x:Name="NbGap" Header="Gap" Value="0" Minimum="0" Maximum="10.0" SmallChange="0.01" LargeChange="0.1" ValueChanged="OnSettingsChanged"/>
 
                         <AppBarSeparator/>
 
@@ -83,7 +82,8 @@
                     <NumberBox Grid.Column="0" x:Name="NbImageW" Header="Image Width" Value="2" Minimum="0.1" Maximum="50" ValueChanged="OnSettingsChanged"/>
                     <NumberBox Grid.Column="1" x:Name="NbImageH" Header="Image Height" Value="2" Minimum="0.1" Maximum="50" ValueChanged="OnSettingsChanged"/>
                 </Grid>
-                <TextBlock Text="Adjust the crop below to fit the dimensions above." Style="{StaticResource CaptionTextBlockStyle}" Foreground="Gray"/>
+                <TextBlock Text="Adjust the crop below to fit the dimensions above."
+                           Style="{StaticResource CaptionTextBlockStyle}" Foreground="Gray"/>
             </StackPanel>
 
             <Grid Grid.Row="1" x:Name="CropParentContainer" SizeChanged="OnCropSizeChanged" Background="#FAFAFA" CornerRadius="8">
@@ -97,9 +97,14 @@
                                   HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
 
                         <Image x:Name="SourceImageControl" Stretch="None"
+                               RenderTransformOrigin="0.5,0.5"
                                PointerPressed="OnImagePointerPressed" PointerMoved="OnImagePointerMoved"
                                PointerReleased="OnImagePointerReleased" PointerCanceled="OnImagePointerReleased"
-                               PointerWheelChanged="OnImagePointerWheelChanged"/>
+                               PointerWheelChanged="OnImagePointerWheelChanged">
+                            <Image.RenderTransform>
+                                <RotateTransform x:Name="ImageRotateTransform" Angle="0"/>
+                            </Image.RenderTransform>
+                        </Image>
                     </ScrollViewer>
                 </Border>
             </Grid>
@@ -112,8 +117,16 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <FontIcon Glyph="&#xE71E;" Grid.Column="0" Margin="0,0,10,0" Foreground="Gray"/>
-                        <Slider x:Name="ZoomSlider" Grid.Column="1" Minimum="0.1" Maximum="5.0" StepFrequency="0.01" Value="1.0" />
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,15,0" VerticalAlignment="Center" Width="60">
+                            <FontIcon Glyph="&#xE7AD;" FontSize="14" Foreground="Gray" Margin="0,0,5,0"/>
+                            <TextBlock x:Name="TxtRotationValue" Text="0.0°" FontSize="12" Foreground="Gray" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <Slider x:Name="RotationSlider" Grid.Column="1" 
+                                Minimum="-20" Maximum="20" Value="0" StepFrequency="0.1"
+                                TickFrequency="2.0" TickPlacement="BottomRight"
+                                ValueChanged="OnRotationChanged"/>
                     </Grid>
 
                     <Grid ColumnSpacing="10">
